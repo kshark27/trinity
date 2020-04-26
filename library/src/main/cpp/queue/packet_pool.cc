@@ -31,8 +31,7 @@ PacketPool::PacketPool()
       buffer_size_(0),
       buffer_(nullptr),
       buffer_cursor_(0),
-      temp_video_packet_(nullptr),
-      temp_video_packet_ref_count_(0),
+      video_packet_duration_(0) ,
       accompany_buffer_size_(0),
       accompany_buffer_(nullptr),
       accompany_buffer_cursor_(0),
@@ -131,9 +130,9 @@ void PacketPool::PushAudioPacketToQueue(AudioPacket *audioPacket) {
             buffer_cursor_ += length;
             audioPacketBufferCursor += length;
             if (buffer_cursor_ == buffer_size_) {
-                AudioPacket* targetAudioPacket = new AudioPacket();
+                auto* targetAudioPacket = new AudioPacket();
                 targetAudioPacket->size = buffer_size_;
-                short * audioBuffer = new short[buffer_size_];
+                auto * audioBuffer = new short[buffer_size_];
                 memcpy(audioBuffer, buffer_, buffer_size_ * sizeof(short));
                 targetAudioPacket->buffer = audioBuffer;
                 audio_packet_queue_->Put(targetAudioPacket);
@@ -155,7 +154,7 @@ void PacketPool::AbortDecoderAccompanyPacketQueue() {
     }
 }
 
-void PacketPool::DestoryDecoderAccompanyPacketQueue() {
+void PacketPool::DestroyDecoderAccompanyPacketQueue() {
     if (nullptr != decoder_packet_queue_) {
         delete decoder_packet_queue_;
         decoder_packet_queue_ = nullptr;
@@ -186,7 +185,8 @@ void PacketPool::InitAccompanyPacketQueue(int sampleRate, int channels) {
     const char *name = "accompanyPacket queue_";
     accompany_packet_queue_ = new AudioPacketQueue(name);
     /** 初始化 Accompany 缓冲 Buffer **/
-    accompany_buffer_size_ = sampleRate * channels * AUDIO_PACKET_DURATION_IN_SECS;
+    accompany_buffer_size_ = static_cast<int>(sampleRate * channels *
+                                              AUDIO_PACKET_DURATION_IN_SECS);
     accompany_buffer_ = new short[accompany_buffer_size_];
     accompany_buffer_cursor_ = 0;
     total_discard_video_packet_duration_copy_ = 0;
@@ -231,9 +231,9 @@ void PacketPool::PushAccompanyPacketToQueue(AudioPacket *accompanyPacket) {
         accompany_buffer_cursor_ += length;
         audioPacketBufferCursor += length;
         if (accompany_buffer_cursor_ == accompany_buffer_size_) {
-            AudioPacket *targetAudioPacket = new AudioPacket();
+            auto *targetAudioPacket = new AudioPacket();
             targetAudioPacket->size = accompany_buffer_size_;
-            short *audioBuffer = new short[accompany_buffer_size_];
+            auto *audioBuffer = new short[accompany_buffer_size_];
             memcpy(audioBuffer, accompany_buffer_, accompany_buffer_size_ * sizeof(short));
             targetAudioPacket->buffer = audioBuffer;
             targetAudioPacket->position = accompanyPacket->position;
@@ -276,8 +276,6 @@ void PacketPool::InitRecordingVideoPacketQueue() {
         const char* name = "recording video yuv frame_ packet_ queue_";
         video_packet_queue_ = new VideoPacketQueue(name);
         total_discard_video_packet_duration_ = 0;
-        temp_video_packet_ = nullptr;
-        temp_video_packet_ref_count_ = 0;
     }
 }
 
@@ -291,15 +289,10 @@ void PacketPool::DestroyRecordingVideoPacketQueue() {
     if (nullptr != video_packet_queue_) {
         delete video_packet_queue_;
         video_packet_queue_ = nullptr;
-        if (temp_video_packet_ref_count_ > 0) {
-            delete temp_video_packet_;
-            temp_video_packet_ = nullptr;
-        }
     }
 }
 
-int PacketPool::GetRecordingVideoPacket(VideoPacket **videoPacket,
-                                        bool block) {
+int PacketPool::GetRecordingVideoPacket(VideoPacket **videoPacket, bool block, bool wait) {
     int result = -1;
     if (nullptr != video_packet_queue_) {
         result = video_packet_queue_->Get(videoPacket, block);
@@ -323,15 +316,11 @@ bool PacketPool::PushRecordingVideoPacketToQueue(VideoPacket *videoPacket) {
             }
             RecordDropVideoFrame(discardVideoFrameDuration);
         }
-        // 为了计算当前帧的Duration, 所以延迟一帧放入Queue中
-        if (nullptr != temp_video_packet_) {
-            int packetDuration = videoPacket->timeMills - temp_video_packet_->timeMills;
-            temp_video_packet_->duration = packetDuration;
-            video_packet_queue_->Put(temp_video_packet_);
-            temp_video_packet_ref_count_ = 0;
-        }
-        temp_video_packet_ = videoPacket;
-        temp_video_packet_ref_count_ = 1;
+        auto duration = video_packet_duration_ - videoPacket->timeMills;
+        // 第一帧时,不能计算时长,就按25帧的帧率计算
+        videoPacket->duration = duration < 0 ? 40 : duration;
+        video_packet_queue_->Put(videoPacket);
+        video_packet_duration_ = videoPacket->timeMills;
     }
     return dropFrame;
 }

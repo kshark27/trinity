@@ -56,7 +56,7 @@ class OpenGL {
     OpenGL(int width, int height);
     OpenGL(const char* vertex, const char* fragment);
     OpenGL(int width, int height, const char* vertex, const char* fragment);
-    ~OpenGL();
+    virtual ~OpenGL();
     void InitCoordinates();
     void SetOnGLObserver(OnGLObserver* observer);
     void SetTextureType(TextureType type = TEXTURE_2D);
@@ -71,6 +71,7 @@ class OpenGL {
     void SetUniformMatrix3f(const char* name, int size, const GLfloat* matrix);
     void SetUniformMatrix4f(const char* name, int size, const GLfloat* matrix);
 
+    void ActiveProgram();
     void ProcessImage(GLuint texture_id);
     void ProcessImage(GLuint texture_id, GLfloat* texture_matrix);
     void ProcessImage(GLuint texture_id, const GLfloat* vertex_coordinate, const GLfloat* texture_coordinate);

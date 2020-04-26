@@ -19,35 +19,21 @@
 //
 // Created by wlanjie on 2019/4/13.
 //
+#include <string>
 
 #if __ANDROID__
 #include <malloc.h>
 #include "android_xlog.h"
 #elif __APPLE__
 #pragma clang diagnostic ignored "-Wdeprecated-declarations"
-#define LOGI
-#define LOGE
+#define LOGE(format, ...) fprintf(stdout, format, __VA_ARGS__) // NOLINT
+#define LOGI(format, ...) fprintf(stdout, format, __VA_ARGS__) // NOLINT
 #endif
+
 #include "opengl.h"
-#include "matrix.h"
-#include "size.h"
 #include "gl.h"
 
 namespace trinity {
-
-static const GLfloat defaultVertexCoordinates[] = {
-        -1.0f, -1.0f,
-        1.0f, -1.0f,
-        -1.0f, 1.0f,
-        1.0f, 1.0f,
-};
-
-static const GLfloat defaultTextureCoordinate[] = {
-        0.0f, 0.0f,
-        1.0f, 0.0f,
-        0.0f, 1.0f,
-        1.0f, 1.0f
-};
 
 OpenGL::OpenGL() {
     gl_observer_ = nullptr;
@@ -98,6 +84,7 @@ OpenGL::OpenGL(int width, int height, const char *vertex, const char *fragment) 
 }
 
 OpenGL::~OpenGL() {
+    LOGI("enter: %s program: %d", __func__, program_);
     if (program_ != 0) {
         glDeleteProgram(program_);
         program_ = 0;
@@ -110,26 +97,27 @@ OpenGL::~OpenGL() {
         delete[] default_texture_coordinates_;
         default_texture_coordinates_ = nullptr;
     }
+    LOGI("leave: %s", __func__);
 }
 
 void OpenGL::InitCoordinates() {
-    default_vertex_coordinates_[0] = -1.0f;
-    default_vertex_coordinates_[1] = -1.0f;
-    default_vertex_coordinates_[2] = 1.0f;
-    default_vertex_coordinates_[3] = -1.0f;
-    default_vertex_coordinates_[4] = -1.0f;
-    default_vertex_coordinates_[5] = 1.0f;
-    default_vertex_coordinates_[6] = 1.0f;
-    default_vertex_coordinates_[7] = 1.0f;
+    default_vertex_coordinates_[0] = -1.0F;
+    default_vertex_coordinates_[1] = -1.0F;
+    default_vertex_coordinates_[2] = 1.0F;
+    default_vertex_coordinates_[3] = -1.0F;
+    default_vertex_coordinates_[4] = -1.0F;
+    default_vertex_coordinates_[5] = 1.0F;
+    default_vertex_coordinates_[6] = 1.0F;
+    default_vertex_coordinates_[7] = 1.0F;
 
-    default_texture_coordinates_[0] = 0.0f;
-    default_texture_coordinates_[1] = 0.0f;
-    default_texture_coordinates_[2] = 1.0f;
-    default_texture_coordinates_[3] = 0.0f;
-    default_texture_coordinates_[4] = 0.0f;
-    default_texture_coordinates_[5] = 1.0f;
-    default_texture_coordinates_[6] = 1.0f;
-    default_texture_coordinates_[7] = 1.0f;
+    default_texture_coordinates_[0] = 0.0F;
+    default_texture_coordinates_[1] = 0.0F;
+    default_texture_coordinates_[2] = 1.0F;
+    default_texture_coordinates_[3] = 0.0F;
+    default_texture_coordinates_[4] = 0.0F;
+    default_texture_coordinates_[5] = 1.0F;
+    default_texture_coordinates_[6] = 1.0F;
+    default_texture_coordinates_[7] = 1.0F;
 }
     
 void OpenGL::SetOnGLObserver(OnGLObserver *observer) {
@@ -145,27 +133,37 @@ void OpenGL::Init(const char* vertex, const char* fragment) {
 }
 
 void OpenGL::SetFrame(int source_width, int source_height, int target_width, int target_height, RenderFrame frame_type) {
-    LOGI("SetFrame source_width: %d source_height: %d target_width: %d target_height: %d", source_width, source_height, target_width, target_height);
-    Size ratio = Size(target_width == 0 ? source_width : target_width,
-                      target_height == 0 ? source_height : target_height);
-    Rect bounds = Rect(0, 0, source_width, source_height);
-    Rect* rect = bounds.GetRectWithAspectRatio(ratio);
-    float width_scale = rect->GetWidth() / bounds.GetWidth();
-    float height_scale = rect->GetHeight() / bounds.GetHeight();
-    LOGI("width_scale: %f height_scale: %f", width_scale, height_scale);
-    InitCoordinates();
+    LOGE("SetFrame source_width: %d source_height: %d target_width: %d target_height: %d", source_width, source_height, target_width, target_height);
+    float target_ratio = target_width * 1.0F / target_height;
+    float scale_width = 1.0F;
+    float scale_height = 1.0F;
     if (frame_type == FIT) {
-        for (int i = 0; i < 4; i++) {
-            default_vertex_coordinates_[i * 2] = defaultVertexCoordinates[i * 2] * width_scale;
-            default_vertex_coordinates_[i * 2 + 1] = defaultVertexCoordinates[i * 2 + 1] * height_scale;
+        float source_ratio = source_width * 1.0F / source_height;
+        if (source_ratio > target_ratio) {
+            scale_width = 1.0F;
+            scale_height = target_ratio / source_ratio;
+        } else {
+            scale_width = source_ratio / target_ratio;
+            scale_height = 1.0F;
         }
     } else if (frame_type == CROP) {
-        for (int i = 0; i < 4; i++) {
-            float x = default_texture_coordinates_[i * 2];
-            default_texture_coordinates_[i * 2] = (x == 0.0f ? (1.0f - height_scale) : height_scale);
+        float source_ratio = source_width * 1.0F / source_height;
+        if (source_ratio > target_ratio) {
+            scale_width = source_ratio / target_ratio;
+            scale_height = 1.0F;
+        } else {
+            scale_width = 1.0F;
+            scale_height = target_ratio / source_ratio;
         }
     }
-    delete rect;
+    default_vertex_coordinates_[0] = -scale_width;
+    default_vertex_coordinates_[1] = -scale_height;
+    default_vertex_coordinates_[2] = scale_width;
+    default_vertex_coordinates_[3] = -scale_height;
+    default_vertex_coordinates_[4] = -scale_width;
+    default_vertex_coordinates_[5] = scale_height;
+    default_vertex_coordinates_[6] = scale_width;
+    default_vertex_coordinates_[7] = scale_height;
 }
 
 void OpenGL::SetOutput(int width, int height) {
@@ -208,6 +206,10 @@ void OpenGL::SetUniformMatrix4f(const char *name, int size, const GLfloat *matri
     glUniformMatrix4fv(location, size, GL_FALSE, matrix);
 }
 
+void OpenGL::ActiveProgram() {
+    glUseProgram(program_);
+}
+
 void OpenGL::ProcessImage(GLuint texture_id) {
     ProcessImage(texture_id, default_vertex_coordinates_, default_texture_coordinates_);
 }
@@ -217,9 +219,10 @@ void OpenGL::ProcessImage(GLuint texture_id, GLfloat *texture_matrix) {
 }
 
 void OpenGL::ProcessImage(GLuint texture_id, const GLfloat *vertex_coordinate, const GLfloat *texture_coordinate) {
-    float texTransMatrix[4 * 4];
-    matrixSetIdentityM(texTransMatrix);
-    ProcessImage(texture_id, vertex_coordinate, texture_coordinate, texTransMatrix);
+    float texture_matrix[4 * 4];
+    memset(reinterpret_cast<void*>(texture_matrix), 0, 16*sizeof(float));
+    texture_matrix[0] = texture_matrix[5] = texture_matrix[10] = texture_matrix[15] = 1.0f;
+    ProcessImage(texture_id, vertex_coordinate, texture_coordinate, texture_matrix);
 }
 
 void OpenGL::ProcessImage(GLuint texture_id, const GLfloat *vertex_coordinate, const GLfloat *texture_coordinate,
@@ -238,10 +241,10 @@ void OpenGL::ProcessImage(GLuint texture_id, const GLfloat *vertex_coordinate, c
         gl_observer_->OnGLParams();
     }
     RunOnDrawTasks();
-    GLuint positionAttribute = static_cast<GLuint>(glGetAttribLocation(program_, "position"));
+    auto positionAttribute = static_cast<GLuint>(glGetAttribLocation(program_, "position"));
     glEnableVertexAttribArray(positionAttribute);
     glVertexAttribPointer(positionAttribute, 2, GL_FLOAT, GL_FALSE, 2 * sizeof(GLfloat), vertex_coordinate);
-    GLuint textureCoordinateAttribute = static_cast<GLuint>(glGetAttribLocation(program_, "inputTextureCoordinate"));
+    auto textureCoordinateAttribute = static_cast<GLuint>(glGetAttribLocation(program_, "inputTextureCoordinate"));
     glEnableVertexAttribArray(textureCoordinateAttribute);
     glVertexAttribPointer(textureCoordinateAttribute, 2, GL_FLOAT, GL_FALSE, 2 * sizeof(GLfloat), texture_coordinate);
     SetUniformMatrix4f("textureMatrix", 1, texture_matrix);
@@ -260,7 +263,11 @@ void OpenGL::ProcessImage(GLuint texture_id, const GLfloat *vertex_coordinate, c
     glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
     glDisableVertexAttribArray(positionAttribute);
     glDisableVertexAttribArray(textureCoordinateAttribute);
-//    glBindTexture(type_ == TEXTURE_OES ? GL_TEXTURE_EXTERNAL_OES : GL_TEXTURE_2D, 0);
+#if __ANDROID__
+    glBindTexture(type_ == TEXTURE_OES ? GL_TEXTURE_EXTERNAL_OES : GL_TEXTURE_2D, 0);
+#elif __APPLE__
+    glBindTexture(GL_TEXTURE_2D, 0);
+#endif
 }
 
 void OpenGL::RunOnDrawTasks() {}
@@ -285,6 +292,7 @@ void OpenGL::CompileShader(const char *shader_string, GLuint shader) {
     glCompileShader(shader);
     GLint compiled = GL_FALSE;
     glGetShaderiv(shader, GL_COMPILE_STATUS, &compiled);
+    LOGI("%s", shader_string);
     if (!compiled) {
         GLint infoLen;
         glGetShaderiv(shader, GL_INFO_LOG_LENGTH, &infoLen);
@@ -297,8 +305,7 @@ void OpenGL::CompileShader(const char *shader_string, GLuint shader) {
                 free(buf);
             }
             glDeleteShader(shader);
-        }
-    }
+        }}
 }
 
 void OpenGL::Link() {

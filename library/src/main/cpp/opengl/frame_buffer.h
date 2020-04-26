@@ -33,15 +33,21 @@ class FrameBuffer : public OpenGL {
     void CompileFrameBuffer(int camera_width, int camera_height);
     ~FrameBuffer();
 
-    void SetStartTime(uint64_t time);
-    void SetEndTime(uint64_t time);
-//    void Init(const char* vertex, const char* fragment);
-    GLuint OnDrawFrame(GLuint texture_id, uint64_t current_time = 0);
-    GLuint OnDrawFrame(GLuint texture_id, GLfloat* matrix, uint64_t current_time = 0);
-    GLuint OnDrawFrame(GLuint texture_id, const GLfloat* vertex_coordinate, const GLfloat* texture_coordinate, uint64_t current_time = 0);
+    void SetStartTime(int time);
+    void SetEndTime(int time);
+//    void InitMessageQueue(const char* vertex, const char* fragment);
+    virtual GLuint OnDrawFrame(GLuint texture_id, uint64_t current_time = 0);
+    virtual GLuint OnDrawFrame(GLuint texture_id, GLfloat* matrix, uint64_t current_time = 0);
+    virtual GLuint OnDrawFrame(GLuint texture_id, const GLfloat* vertex_coordinate, const GLfloat* texture_coordinate, uint64_t current_time = 0);
+    virtual GLuint OnDrawFrame(GLuint texture_id, const GLfloat* vertex_coordinate, const GLfloat* texture_coordinate,
+            GLfloat* matrix, uint64_t current_time = 0);
 
     GLuint GetTextureId() {
         return texture_id_;
+    }
+
+    GLuint GetFrameBufferId() {
+        return frameBuffer_id_;
     }
 
  private:
@@ -49,8 +55,8 @@ class FrameBuffer : public OpenGL {
     GLuint frameBuffer_id_;
     GLfloat* vertex_coordinate_;
     GLfloat* texture_coordinate_;
-    uint64_t start_time_;
-    uint64_t end_time_;
+    int start_time_;
+    int end_time_;
 };
 
 }  // namespace trinity

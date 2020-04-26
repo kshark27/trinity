@@ -1,5 +1,6 @@
 package com.trinity.sample.fragment
 
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.provider.MediaStore
@@ -23,7 +24,7 @@ import java.util.*
 
 class VideoFragment : Fragment() {
 
-  private val mAdapter = MediaAdapter()
+  private lateinit var mAdapter: MediaAdapter
 
   companion object {
     private const val DURATION = "duration"
@@ -38,6 +39,7 @@ class VideoFragment : Fragment() {
 
   override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
     super.onViewCreated(view, savedInstanceState)
+    mAdapter = MediaAdapter()
     val recyclerView = view.findViewById<RecyclerView>(R.id.recycler_view)
     recyclerView.layoutManager = GridLayoutManager(activity, 4)
     recyclerView.adapter = mAdapter
@@ -61,7 +63,14 @@ class VideoFragment : Fragment() {
       while (cursor?.moveToNext() == true) {
         val id = cursor.getLong(cursor.getColumnIndexOrThrow(PROJECTION[0]))
         val path = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-          QUERY_URI.buildUpon().appendPath(id.toString()).build().toString()
+          val uri = QUERY_URI.buildUpon().appendPath(id.toString()).build().toString()
+          val filePathColumn = arrayOf(MediaStore.MediaColumns.DATA)
+          val pathCursor = it.contentResolver.query(Uri.parse(uri), filePathColumn, null, null, null)
+          pathCursor?.moveToFirst()
+          val columnIndex = pathCursor?.getColumnIndex(filePathColumn[0]) ?: 0
+          val filePath = pathCursor?.getString(columnIndex) ?: ""
+          pathCursor?.close()
+          filePath
         } else {
           cursor.getString(cursor.getColumnIndexOrThrow(PROJECTION[1]))
         }
@@ -69,7 +78,8 @@ class VideoFragment : Fragment() {
         val width = cursor.getInt(cursor.getColumnIndexOrThrow(PROJECTION[3]))
         val height = cursor.getInt(cursor.getColumnIndexOrThrow(PROJECTION[4]))
         val duration = cursor.getInt(cursor.getColumnIndexOrThrow(PROJECTION[5]))
-        val item = MediaItem(path, pictureType, width, height, duration)
+        val item = MediaItem(path, pictureType, width, height)
+        item.duration = duration
         medias.add(item)
       }
       cursor?.close()

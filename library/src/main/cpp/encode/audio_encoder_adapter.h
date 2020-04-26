@@ -25,6 +25,8 @@
 #include "packet_pool.h"
 #include "audio_encoder.h"
 #include "audio_packet_pool.h"
+#include <fstream>
+#include <iostream>
 
 namespace trinity {
 

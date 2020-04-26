@@ -24,20 +24,20 @@
 #define TRINITY_VIDEO_CONSUMER_THREAD_H
 
 #include <pthread.h>
+#include <string>
 #include "packet_pool.h"
 #include "mp4_muxer.h"
-#include "h264_muxer.h"
 #include "audio_packet_pool.h"
 
 namespace trinity {
 
 class VideoConsumerThread {
-public:
+ public:
     VideoConsumerThread();
     ~VideoConsumerThread();
 
     int Init(const char* path, int video_width, int video_height, int frame_rate, int video_bit_Rate,
-            int audio_sample_rate, int audio_channels, int audio_bit_rate, char* audio_codec_name);
+            int audio_sample_rate, int audio_channels, int audio_bit_rate, std::string& audio_codec_name);
 
     void Start();
     void StartAsync();
@@ -47,16 +47,15 @@ public:
     void Stop();
 
     int GetH264Packet(VideoPacket** packet);
-
     int GetAudioPacket(AudioPacket** packet);
 
-protected:
+ protected:
     virtual void HandleRun(void* context);
     static void* StartThread(void* context);
     void Init();
     void Release();
 
-protected:
+ protected:
     pthread_t thread_;
     pthread_mutex_t lock_;
     pthread_cond_t condition_;
@@ -68,6 +67,6 @@ protected:
     Mp4Muxer* mp4_muxer_;
 };
 
-}
+}  // namespace trinity
 
-#endif //TRINITY_VIDEO_CONSUMER_THREAD_H
+#endif  // TRINITY_VIDEO_CONSUMER_THREAD_H

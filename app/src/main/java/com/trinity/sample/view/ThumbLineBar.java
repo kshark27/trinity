@@ -23,6 +23,9 @@ import androidx.recyclerview.widget.RecyclerView;
 
 import com.trinity.sample.adapter.ThumbRecyclerAdapter;
 import com.trinity.sample.editor.PlayerListener;
+import com.trinity.sample.entity.MediaItem;
+
+import java.util.List;
 
 public class ThumbLineBar extends FrameLayout {
 
@@ -119,12 +122,11 @@ public class ThumbLineBar extends FrameLayout {
     }
 
     @SuppressLint("ClickableViewAccessibility")
-    public void setup(ThumbLineConfig thumbLineConfig, OnBarSeekListener barSeekListener, PlayerListener linePlayer) {
+    public void setup(List<MediaItem> medias, ThumbLineConfig thumbLineConfig, OnBarSeekListener barSeekListener, PlayerListener linePlayer) {
         mThumbLineConfig = thumbLineConfig;
         initLayoutParams();
         mDuration = linePlayer.getDuration();
         if (mBarSeekListener == null) {
-
             setOnBarSeekListener(barSeekListener);
             setThumbLinePlayer(linePlayer);
             mRecyclerView.setOnTouchListener(new OnTouchListener() {
@@ -201,19 +203,16 @@ public class ThumbLineBar extends FrameLayout {
         }
 
         if (mThumbRecyclerAdapter == null) {
-
-            mThumbRecyclerAdapter = new ThumbRecyclerAdapter(mThumbLineConfig.getThumbnailCount(),
-                    (int)mLinePlayer.getDuration() / 1000,
-                    mThumbLineConfig.getThumbnailFetcher(), mThumbLineConfig.getScreenWidth(),
+            mThumbRecyclerAdapter = new ThumbRecyclerAdapter(getContext(), medias, mThumbLineConfig.getThumbnailCount(),
+                    (int)mLinePlayer.getDuration(),
+                    mThumbLineConfig.getScreenWidth(),
                     mThumbLineConfig.getThumbnailPoint().x, mThumbLineConfig.getThumbnailPoint().y);
             mRecyclerView.setAdapter(mThumbRecyclerAdapter);
             mThumbRecyclerAdapter.cacheBitmaps();
 
         } else {
             mThumbRecyclerAdapter.setData(mThumbLineConfig.getThumbnailCount(),
-                                          (int)mLinePlayer.getDuration() / 1000,
-                                          mThumbLineConfig.getThumbnailFetcher(), mThumbLineConfig.getScreenWidth(),
-                                          mThumbLineConfig.getThumbnailPoint().x, mThumbLineConfig.getThumbnailPoint().y);
+                                          (int)mLinePlayer.getDuration());
             mThumbRecyclerAdapter.notifyDataSetChanged();
         }
 
@@ -308,7 +307,6 @@ public class ThumbLineBar extends FrameLayout {
      * @return boolean
      */
     public boolean isScrolling() {
-
         return mScrollState != RecyclerView.SCROLL_STATE_IDLE;
     }
 

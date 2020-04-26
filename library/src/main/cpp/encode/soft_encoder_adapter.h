@@ -24,6 +24,7 @@
 #include "egl_core.h"
 #include "opengl.h"
 #include "encode_render.h"
+#include "handler.h"
 
 namespace trinity {
 
@@ -33,58 +34,31 @@ class SoftEncoderAdapter : public VideoEncoderAdapter {
 
     virtual ~SoftEncoderAdapter();
 
-    void CreateEncoder(EGLCore *eglCore, int inputTexId);
+    virtual int CreateEncoder(EGLCore *eglCore) override ;
 
-    void Encode(int timeMills = -1);
+    virtual void Encode(int64_t time, int texture_id = 0) override ;
 
-    void renderLoop();
-
-    void startEncode();
-
-    void DestroyEncoder();
-
-    void ReConfigure(int maxBitRate, int avgBitRate, int fps);
-
-    void HotConfig(int maxBitrate, int avgBitrate, int fps);
+    virtual void DestroyEncoder() override ;
 
  private:
-    static void *StartEncodeThread(void *ptr);
-
-    static void *StartDownloadThread(void *ptr);
-
+    void StartEncode();
+    static void* StartEncodeThread(void* args);
     bool Initialize();
-
-    void LoadTexture();
-
-    void SignalPreviewThread();
-
-    void Destroy();
-
+    void EncodeTexture(GLuint texture_id, int time);
  private:
+    bool encoding_;
+    EGLCore* core_;
+    EGLSurface encoder_surface_;
     VideoPacketQueue *yuy_packet_pool_;
-    /** 这是创建RenderThread的context, 要共享给我们这个EGLContext线程 **/
-    EGLContext load_texture_context_;
     GLfloat* vertex_coordinate_;
     GLfloat* texture_coordinate_;
     GLuint fbo_;
     GLuint output_texture_id_;
-    EGLCore *egl_core_;
-    EGLSurface copy_texture_surface_;
-    enum DownloadThreadMessage {
-        MSG_NONE = 0, MSG_WINDOW_SET, MSG_RENDER_LOOP_EXIT
-    };
-    pthread_mutex_t preview_thread_lock_;
-    pthread_cond_t preview_thread_condition_;
-    pthread_mutex_t lock_;
-    pthread_cond_t condition_;
-    enum DownloadThreadMessage msg_;
-    pthread_t image_download_thread_;
     EncodeRender* encode_render_;
     int pixel_size_;
     VideoX264Encoder *encoder_;
     pthread_t x264_encoder_thread_;
     OpenGL *renderer_;
-    int time_mills_;
 };
 
 }  // namespace trinity

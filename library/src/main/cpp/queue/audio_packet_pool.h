@@ -39,7 +39,7 @@ class AudioPacketPool {
     virtual void InitAudioPacketQueue();
     virtual void AbortAudioPacketQueue();
     virtual void DestroyAudioPacketQueue();
-    virtual int GetAudioPacket(AudioPacket **audioPacket, bool block);
+    virtual int GetAudioPacket(AudioPacket **audioPacket, bool block, bool wait = true);
     virtual void PushAudioPacketToQueue(AudioPacket *audioPacket);
     virtual int GetAudioPacketQueueSize();
 };

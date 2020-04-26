@@ -30,24 +30,18 @@
 
 namespace trinity {
 
-typedef enum {
-    FRAME_AVAILABLE
-} MediaEncoderType;
-
-class MediaEncodeHandler;
-
 class MediaEncodeAdapter : public VideoEncoderAdapter {
  public:
     MediaEncodeAdapter(JavaVM* vm, jobject object);
     virtual ~MediaEncodeAdapter();
 
-    virtual void CreateEncoder(EGLCore* core, int texture_id);
+    virtual int CreateEncoder(EGLCore* core) override ;
 
-    virtual void DestroyEncoder();
+    virtual void DestroyEncoder() override ;
 
-    virtual void Encode(int timeMills = -1);
+    virtual void Encode(int64_t time, int texture_id = 0) override ;
 
-    void DrainEncodeData();
+    int DrainEncodeData();
 
  private:
     bool encoding_;
@@ -55,41 +49,16 @@ class MediaEncodeAdapter : public VideoEncoderAdapter {
     JavaVM* vm_;
     jobject object_;
     EGLCore* core_;
-    MediaEncodeHandler* handler_;
-    MessageQueue* queue_;
     pthread_t encoder_thread_;
     EGLSurface encoder_surface_;
     ANativeWindow* encoder_window_;
     jbyteArray output_buffer_;
-    int start_encode_time_;
+    long start_encode_time_;
     OpenGL* render_;
 
  private:
-    static void* EncoderThreadCallback(void* context);
-    void EncodeLoop();
-    void CreateMediaEncoder(JNIEnv* env);
+    int CreateMediaEncoder(JNIEnv* env);
     void DestroyMediaEncoder(JNIEnv* env);
-};
-
-class MediaEncodeHandler : public Handler {
- public:
-    MediaEncodeHandler(MediaEncodeAdapter* adapter, MessageQueue* queue) : Handler(queue) {
-        adapter_ = adapter;
-    }
-
-    void HandleMessage(Message* msg) {
-        int what = msg->GetWhat();
-        switch (what) {
-            case FRAME_AVAILABLE:
-                adapter_->DrainEncodeData();
-                break;
-            default:
-                break;
-        }
-    }
-
- private:
-    MediaEncodeAdapter* adapter_;
 };
 
 }  // namespace trinity

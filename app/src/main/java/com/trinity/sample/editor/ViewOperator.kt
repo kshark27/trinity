@@ -41,17 +41,12 @@ class ViewOperator(
       return
     }
 
-    var params = playerButton.layoutParams
     bottomMenuView.visibility = View.GONE
-    if (params is ViewGroup.MarginLayoutParams) {
+    val params: ViewGroup.LayoutParams = playerView.layoutParams
+    mPlayerViewMarginTop = if (params is ViewGroup.MarginLayoutParams) {
+      params.topMargin
     } else {
-    }
-
-    params = playerView.layoutParams
-    if (params is ViewGroup.MarginLayoutParams) {
-      mPlayerViewMarginTop = params.topMargin
-    } else {
-      mPlayerViewMarginTop = 0
+      0
     }
 
     mRootViewHeight = rootView.height

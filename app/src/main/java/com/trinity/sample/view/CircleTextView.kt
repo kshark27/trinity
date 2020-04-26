@@ -4,26 +4,26 @@ import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Paint
 import android.util.AttributeSet
-import android.widget.TextView
+import androidx.appcompat.widget.AppCompatTextView
 import com.trinity.sample.R
 
-class CircleTextView  : TextView {
+class CircleTextView  : AppCompatTextView {
   private var mPaint: Paint? = null
   private var defaultColor: Int = 0
 
   constructor(context: Context) : super(context) {
-    init(context, null, 0)
+    init(context, null)
   }
 
   constructor(context: Context, attrs: AttributeSet?) : super(context, attrs) {
-    init(context, attrs, 0)
+    init(context, attrs)
   }
 
   constructor(context: Context, attrs: AttributeSet?, defStyleAttr: Int) : super(context, attrs, defStyleAttr) {
-    init(context, attrs, defStyleAttr)
+    init(context, attrs)
   }
 
-  private fun init(context: Context, attrs: AttributeSet?, defStyleAttr: Int) {
+  private fun init(context: Context, attrs: AttributeSet?) {
     val typedArray = context.obtainStyledAttributes(attrs, R.styleable.CircleTextView)
     defaultColor = typedArray.getInt(R.styleable.CircleTextView_backgroundColor, -1)
     typedArray.recycle()

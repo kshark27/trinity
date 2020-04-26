@@ -2,8 +2,8 @@ cmake_minimum_required(VERSION 3.4.1)
 
 enable_language(ASM)
 
-set(-DCMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} -Wall -s")
-set(-DCMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -Wall -s")
+set(-DCMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} -Wall -s -Wdeprecated-declarations")
+set(-DCMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -Wall -s -Wdeprecated-declarations")
 set(PATH_TO_MEDIACORE ${CMAKE_SOURCE_DIR})
 
 add_definitions("
@@ -24,6 +24,7 @@ if(CMAKE_BUILD_TYPE STREQUAL "Debug")
 else()
 endif()
 
+include_directories(${CMAKE_SOURCE_DIR})
 include_directories(${PATH_TO_MEDIACORE}/)
 include_directories(${PATH_TO_MEDIACORE}/camera/)
 include_directories(${PATH_TO_MEDIACORE}/message/)
@@ -62,7 +63,14 @@ include_directories(${FDKAAC_HEADER})
 set(XLOG_HEADER ${CMAKE_CURRENT_LIST_DIR}/../../../../extra/xlogger/include)
 include_directories(${XLOG_HEADER})
 
+#include glm
+set(GLM_HEADER ${CMAKE_CURRENT_LIST_DIR}/../../../../extra/glm/glm)
+include_directories(${GLM_HEADER})
+include_directories(${GLM_HEADER}/gtc)
+include_directories(${GLM_HEADER}/gtx)
+
 file(GLOB FILES "${PATH_TO_MEDIACORE}/*.cc")
+file(GLOB FILES_C "${PATH_TO_MEDIACORE}/*.c")
 file(GLOB FILES_CAMERA "${PATH_TO_MEDIACORE}/camera/*.cc")
 file(GLOB FILES_MESSAGE "${PATH_TO_MEDIACORE}/message/*.cc")
 file(GLOB FILES_EGL "${PATH_TO_MEDIACORE}/egl/*.cc")
@@ -75,6 +83,7 @@ file(GLOB FILES_QUEUE "${PATH_TO_MEDIACORE}/queue/*.cc")
 file(GLOB FILES_THREAD "${PATH_TO_MEDIACORE}/thread/*.cc")
 file(GLOB FILES_MP4 "${PATH_TO_MEDIACORE}/mp4/*.cc")
 file(GLOB FILES_UTIL "${PATH_TO_MEDIACORE}/util/*.cc")
+file(GLOB FILES_UTIL_C "${PATH_TO_MEDIACORE}/util/*.c")
 file(GLOB FILES_PLAYER "${PATH_TO_MEDIACORE}/player/*.cc")
 file(GLOB FILES_PLAYER_C "${PATH_TO_MEDIACORE}/player/*.c")
 file(GLOB FILE_OPENSL "${PATH_TO_MEDIACORE}/opensl/*.cc")
@@ -85,6 +94,7 @@ add_library(
         SHARED
         trinity_jni.cc
         ${FILES}
+        ${FILES_C}
         ${FILES_CAMERA}
         ${FILES_MESSAGE}
         ${FILES_EGL}
@@ -96,6 +106,7 @@ add_library(
         ${FILES_THREAD}
         ${FILES_MP4}
         ${FILES_UTIL}
+        ${FILES_UTIL_C}
         ${FILES_PLAYER}
         ${FILES_PLAYER_C}
         ${FILE_OPENSL}
@@ -104,7 +115,12 @@ add_library(
         ${FILES_OPENGL}/frame_buffer.cc
         ${FILES_OPENGL}/gaussian_blur.cc
         ${FILES_OPENGL}/opengl.cc
-        ${FILES_OPENGL}/yuv_render.cc)
+        ${FILES_OPENGL}/yuv_render.cc
+        ${FILES_OPENGL}/image_process.cc
+        ${FILES_OPENGL}/process_buffer.cc
+        ${FILES_OPENGL}/effect.cc
+        ${FILES_OPENGL}/blend.cc
+        ${FILES_OPENGL}/face_markup_render.cc)
 
 set(FFMPEG_LIB ${CMAKE_CURRENT_LIST_DIR}/../../../../extra/ffmpeg/${ANDROID_ABI})
 add_library(avcodec STATIC IMPORTED)
@@ -143,7 +159,25 @@ add_library(xlog SHARED IMPORTED)
 set_target_properties(xlog PROPERTIES IMPORTED_LOCATION ${XLOG_LIB})
 
 #target_link_libraries(trinity android jnigraphics log z swresample avformat avcodec avutil jpeg jpeg_turbo GLESv2 EGL OpenSLES)
-target_link_libraries(trinity
+if (${CMAKE_SYSTEM_VERSION} MATCHES "21")
+    target_link_libraries(trinity
+        log
+        android
+        GLESv2
+        EGL
+        z
+        mediandk
+        OpenSLES
+        swresample
+        avformat
+        avcodec
+        avfilter
+        avutil
+        fdk-aac
+        x264
+        xlog)
+else (${CMAKE_SYSTEM_VERSION} LESS "21")
+    target_link_libraries(trinity
         log
         android
         GLESv2
@@ -158,3 +192,4 @@ target_link_libraries(trinity
         fdk-aac
         x264
         xlog)
+endif (${CMAKE_SYSTEM_VERSION} MATCHES "21")

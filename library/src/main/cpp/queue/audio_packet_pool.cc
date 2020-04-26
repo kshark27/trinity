@@ -21,6 +21,7 @@
 //
 
 #include "audio_packet_pool.h"
+#include "android_xlog.h"
 
 namespace trinity {
 
@@ -34,7 +35,8 @@ AudioPacketPool *AudioPacketPool::GetInstance() {
     return instance_;
 }
 
-AudioPacketPool::~AudioPacketPool() {}
+AudioPacketPool::~AudioPacketPool() {
+}
 
 void AudioPacketPool::InitAudioPacketQueue() {
     const char* name = "audioPacket AAC Data queue_";
@@ -54,7 +56,7 @@ void AudioPacketPool::DestroyAudioPacketQueue() {
     }
 }
 
-int AudioPacketPool::GetAudioPacket(AudioPacket **audioPacket, bool block) {
+int AudioPacketPool::GetAudioPacket(AudioPacket **audioPacket, bool block, bool wait) {
     int result = -1;
     if (nullptr != audio_packet_queue_) {
         result = audio_packet_queue_->Get(audioPacket, block);
@@ -63,7 +65,7 @@ int AudioPacketPool::GetAudioPacket(AudioPacket **audioPacket, bool block) {
 }
 
 void AudioPacketPool::PushAudioPacketToQueue(AudioPacket *audioPacket) {
-    if (nullptr != audio_packet_queue_) {
+    if (nullptr != audio_packet_queue_ && audioPacket != nullptr) {
         audio_packet_queue_->Put(audioPacket);
     }
 }

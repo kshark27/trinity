@@ -25,39 +25,37 @@
 
 namespace trinity {
 
-VideoEditor::VideoEditor(const char* resource_path) : current_action_id_(0) {
+VideoEditor::VideoEditor(JNIEnv* env, jobject object, const char* resource_path) : Handler()
+    , window_(nullptr)
+    , video_editor_object_()
+    , repeat_(false)
+    , play_index_(0)
+    , editor_resource_()
+    , vm_()
+    , queue_mutex_()
+    , queue_cond_() {
     window_ = nullptr;
-    video_editor_object_ = nullptr;
     repeat_ = false;
-    play_index = 0;
-    video_player_ = new VideoPlayer();
-    video_player_->RegisterVideoFrameObserver(this);
+    player_ = new Player(env, object);
+    player_->AddObserver(this);
     editor_resource_ = new EditorResource(resource_path);
-    music_player_ = nullptr;
-    state_event_ = nullptr;
-    on_video_render_event_ = nullptr;
-
-    message_queue_ = new MessageQueue("Video Complete Message Queue");
-    handler_ = new PlayerHandler(this, message_queue_);
+    env->GetJavaVM(&vm_);
+    video_editor_object_ = env->NewGlobalRef(object);
 }
 
 VideoEditor::~VideoEditor() {
-    if (nullptr != video_player_) {
-        delete video_player_;
-        video_player_ = nullptr;
+    if (nullptr != player_) {
+        player_->Destroy();
+        delete player_;
+        player_ = nullptr;
     }
     if (nullptr != editor_resource_) {
         delete editor_resource_;
         editor_resource_ = nullptr;
     }
-    if (nullptr != message_queue_) {
-        message_queue_->Abort();
-        delete message_queue_;
-        message_queue_ = nullptr;
-    }
-    if (nullptr != handler_) {
-        delete handler_;
-        handler_ = nullptr;
+    JNIEnv* env = nullptr;
+    if ((vm_)->GetEnv(reinterpret_cast<void**>(&env), JNI_VERSION_1_6) == JNI_OK) {
+        env->DeleteGlobalRef(video_editor_object_);
     }
 }
 
@@ -72,47 +70,37 @@ int VideoEditor::Init() {
         LOGE("init clip queue cond error");
         return result;
     }
-    result = pthread_create(&complete_thread_, nullptr, CompleteThread, this);
-    if (result != 0) {
-        LOGE("Init complete thread error: %d", result);
-        return result;
-    }
-    if (nullptr != video_player_) {
-        video_player_->Init();
-    }
     return result;
 }
 
-void VideoEditor::OnSurfaceCreated(JNIEnv* env, jobject object, jobject surface) {
+void VideoEditor::OnSurfaceCreated(jobject surface) {
     if (nullptr != window_) {
         ANativeWindow_release(window_);
         window_ = nullptr;
     }
-    if (nullptr != video_editor_object_) {
-        env->DeleteGlobalRef(video_editor_object_);
-        video_editor_object_ = nullptr;
+    JNIEnv* env = nullptr;
+    if ((vm_)->GetEnv(reinterpret_cast<void**>(&env), JNI_VERSION_1_6) != JNI_OK) {
+        return;
     }
     window_ = ANativeWindow_fromSurface(env, surface);
-    video_editor_object_ = env->NewGlobalRef(object);
-
-    if (nullptr != video_player_) {
-        video_player_->OnSurfaceCreated(window_);
+    if (nullptr != player_) {
+        player_->OnSurfaceCreated(window_);
     }
 }
 
 void VideoEditor::OnSurfaceChanged(int width, int height) {
-    if (nullptr != video_player_) {
-        video_player_->OnSurfaceChanged(width, height);
+    if (nullptr != player_) {
+        player_->OnSurfaceChanged(width, height);
     }
 }
 
-void VideoEditor::OnSurfaceDestroyed(JNIEnv* env) {
-    if (nullptr != video_player_) {
-        video_player_->OnSurfaceDestroyed();
+void VideoEditor::OnSurfaceDestroyed() {
+    if (nullptr != player_) {
+        player_->OnSurfaceDestroy();
     }
-    if (nullptr != video_editor_object_) {
-        env->DeleteGlobalRef(video_editor_object_);
-        video_editor_object_ = nullptr;
+    if (nullptr != window_) {
+        ANativeWindow_release(window_);
+        window_ = nullptr;
     }
 }
 
@@ -126,15 +114,22 @@ int64_t VideoEditor::GetVideoDuration() const {
 }
 
 int64_t VideoEditor::GetCurrentPosition() const {
-    if (nullptr != video_player_) {
-        return video_player_->GetCurrentPosition();
+    if (nullptr != player_) {
+        int duration = 0;
+        for (int i = 0; i < clip_deque_.size(); i++) {
+            if (i < play_index_) {
+                MediaClip* clip = clip_deque_.at(i);
+                duration += clip->end_time - clip->start_time;
+            }
+        }
+        return duration + player_->GetCurrentPosition();
     }
     return 0;
 }
 
 int VideoEditor::GetClipsCount() {
     pthread_mutex_lock(&queue_mutex_);
-    int size = clip_deque_.size();
+    int size = static_cast<int>(clip_deque_.size());
     pthread_mutex_unlock(&queue_mutex_);
     return size;
 }
@@ -146,7 +141,38 @@ MediaClip *VideoEditor::GetClip(int index) {
     return clip_deque_.at(index);
 }
 
+int VideoEditor::CheckFileType(MediaClip *clip) {
+    auto path = clip->file_name;
+    FILE* file = fopen(path, "r");
+    if (file == nullptr) {
+        return -1;
+    }
+    auto buffer = new uint8_t[12];
+    fread(buffer, sizeof(uint8_t), sizeof(uint8_t) * 12, file);
+    fclose(file);
+    if ((buffer[6] == 'J' && buffer[7] == 'F' && buffer[8] == 'I' && buffer[9] == 'F') ||
+        (buffer[6] == 'E' && buffer[7] == 'x' && buffer[8] == 'i' && buffer[9] == 'f')) {
+        // JPEG
+        clip->type = IMAGE;
+    } else if (buffer[1] == 'P' && buffer[2] == 'N' && buffer[3] == 'G') {
+        // PNG
+        clip->type = IMAGE;
+    } else if (buffer[4] == 'f' && buffer[5] == 't' && buffer[6] == 'y' && buffer[7] == 'p') {
+        // mp4
+        clip->type = VIDEO;
+    } else {
+        delete[] buffer;
+        return -2;
+    }
+    delete[] buffer;
+    return 0;
+}
+
 int VideoEditor::InsertClip(MediaClip *clip) {
+    int ret = CheckFileType(clip);
+    if (ret != 0) {
+        return ret;
+    }
     pthread_mutex_lock(&queue_mutex_);
     clip_deque_.push_back(clip);
     editor_resource_->InsertClip(clip);
@@ -201,159 +227,151 @@ int VideoEditor::GetClipIndex(int64_t time) {
     return 0;
 }
 
-int VideoEditor::AddFilter(const char* filter_config) {
-    LOGI("add filter config: %s", filter_config);
-    if (nullptr != video_player_) {
-        int actId = current_action_id_++;
-        char* config = new char[strlen(filter_config) + 1];
-        // TODO snprintf
-        sprintf(config, "%s%c", filter_config, 0);
-        Message* message = new Message(kFilter, actId, 0, config);
-        video_player_->SendGLMessage(message);
-        return actId;
+int VideoEditor::AddFilter(const char *config) {
+    if (nullptr != player_) {
+        int action_id = player_->AddFilter(config);
+        if (nullptr != editor_resource_) {
+            editor_resource_->AddFilter(config, action_id);
+        }
+        return action_id;
     }
     return -1;
 }
 
-void VideoEditor::UpdateFilter(const char *filter_config, int action_id) {
-    LOGI("update filter action_id: %d config: %s", action_id, filter_config);
-    if (nullptr != video_player_) {
-        char* config = new char[strlen(filter_config) + 1];
-        // TODO snprintf
-        sprintf(config, "%s%c", filter_config, 0);
-        Message* message = new Message(kFilter, action_id, 0, config);
-        video_player_->SendGLMessage(message);
+void VideoEditor::UpdateFilter(const char *config, int start_time, int end_time, int action_id) {
+    if (nullptr != player_) {
+        player_->UpdateFilter(config, start_time, end_time, action_id);
+        if (nullptr != editor_resource_) {
+            editor_resource_->UpdateFilter(config, start_time, end_time, action_id);
+        }
     }
 }
 
-int VideoEditor::AddMusic(const char *path, uint64_t start_time, uint64_t end_time) {
-    if (nullptr == music_player_) {
-        music_player_ = new MusicDecoderController();
-        music_player_->Init(0.2f, 44100);
-        music_player_->Start(path);
+void VideoEditor::DeleteFilter(int action_id) {
+    if (nullptr != player_) {
+        player_->DeleteFilter(action_id);
+        if (nullptr != editor_resource_) {
+            editor_resource_->DeleteFilter(action_id);
+        }
     }
-    return 0;
+}
+
+int VideoEditor::AddMusic(const char* music_config) {
+    if (nullptr != player_) {
+        int action_id = player_->AddMusic(music_config);
+        if (nullptr != editor_resource_) {
+            editor_resource_->AddMusic(music_config, action_id);
+        }
+        return action_id;
+    }
+    return -1;
+}
+
+void VideoEditor::UpdateMusic(const char* music_config, int action_id) {
+    if (nullptr != player_) {
+        player_->UpdateMusic(music_config, action_id);
+
+        if (nullptr != editor_resource_) {
+            editor_resource_->UpdateMusic(music_config, action_id);
+        }
+    }
+}
+
+void VideoEditor::DeleteMusic(int action_id) {
+    if (nullptr != player_) {
+        player_->DeleteMusic(action_id);
+        if (nullptr != editor_resource_) {
+            editor_resource_->DeleteMusic(action_id);
+        }
+    }
 }
 
 int VideoEditor::AddAction(const char *effect_config) {
-    if (nullptr != video_player_) {
-        int actId = current_action_id_++;
-        char *config = new char[strlen(effect_config) + 1];
-        sprintf(config, "%s%c", effect_config, 0);
-        Message *message = new Message(kEffect, actId, 0, config);
-        video_player_->SendGLMessage(message);
-
+    if (nullptr != player_) {
+        auto action_id = player_->AddAction(effect_config);
         if (nullptr != editor_resource_) {
-            editor_resource_->AddAction(effect_config, actId);
+            editor_resource_->AddAction(effect_config, action_id);
         }
-        return actId;
+        return action_id;
     }
     return -1;
 }
 
-void VideoEditor::UpdateAction(const char *effect_config, int action_id) {
-    char* config = new char[strlen(effect_config) + 1];
-    sprintf(config, "%s%c", effect_config, 0);
-    Message* message = new Message(kEffectUpdate, action_id, 0, config);
-    video_player_->SendGLMessage(message);
-
-    if (nullptr != editor_resource_) {
-        editor_resource_->UpdateAction(effect_config, action_id);
-    }
-}
-
-int VideoEditor::OnCompleteEvent(StateEvent *event) {
-    VideoEditor *editor = reinterpret_cast<VideoEditor*>(event->context);
-    if (nullptr != editor) {
-        editor->handler_->PostMessage(new Message(kStartPlayer));
-    }
-    return 0;
-}
-
-int VideoEditor::OnVideoRender(OnVideoRenderEvent *event, int texture_id, int width, int height, uint64_t current_time) {
-    VideoEditor *editor = reinterpret_cast<VideoEditor*>(event->context);
-    if (nullptr != editor) {
-        return editor->image_process_->Process(texture_id, current_time, width, height, 0, 0);
-    }
-    return 0;
-}
-
-int VideoEditor::OnComplete() {
-    if (repeat_) {
-        if (clip_deque_.size() == 1) {
-            MediaClip* clip = clip_deque_.at(0);
-            video_player_->Seek(clip->start_time);
-        } else {
-            video_player_->Stop();
-            play_index++;
-            if (play_index >= clip_deque_.size()) {
-                play_index = 0;
-            }
-            MediaClip* clip = clip_deque_.at(play_index);
-            FreeStateEvent();
-            AllocStateEvent();
-            video_player_->Start(clip->file_name, clip->start_time,
-                    clip->end_time == 0 ? INT64_MAX : clip->end_time, state_event_, on_video_render_event_);
+void VideoEditor::UpdateAction(int start_time, int end_time, int action_id) {
+    if (nullptr != player_) {
+        player_->UpdateAction(start_time, end_time, action_id);
+        if (nullptr != editor_resource_) {
+            editor_resource_->UpdateAction(start_time, end_time, action_id);
         }
+    }
+}
+
+void VideoEditor::DeleteAction(int action_id) {
+    if (nullptr != player_) {
+        player_->DeleteAction(action_id);
+    }
+    if (nullptr != editor_resource_) {
+        editor_resource_->DeleteAction(action_id);
+    }
+}
+
+void VideoEditor::OnComplete() {
+    LOGE("enter %s", __func__);
+    if (clip_deque_.size() == 1) {
+        play_index_ = repeat_ ? 0 : -1;
     } else {
-        video_player_->Stop();
+        play_index_++;
+        if (play_index_ >= clip_deque_.size()) {
+            play_index_ = repeat_ ? 0 : -1;
+        }
     }
-    return 0;
-}
-
-void VideoEditor::FreeStateEvent() {
-    if (nullptr != state_event_) {
-        av_free(state_event_);
-        state_event_ = nullptr;
+    if (play_index_ == -1) {
+        return;
     }
-}
 
-void VideoEditor::AllocStateEvent() {
-    state_event_ = reinterpret_cast<StateEvent*>(av_malloc(sizeof(StateEvent)));
-    memset(state_event_, 0, sizeof(StateEvent));
-    state_event_->on_complete_event = OnCompleteEvent;
-    state_event_->context = this;
-}
-
-void VideoEditor::FreeVideoRenderEvent() {
-    if (nullptr != on_video_render_event_) {
-        av_free(on_video_render_event_);
-        on_video_render_event_ = nullptr;
+    int video_count_duration = 0;
+    for (int i = 0; i < clip_deque_.size(); i++) {
+        if (i < play_index_) {
+            auto* clip = clip_deque_.at(static_cast<unsigned int>(i));
+            video_count_duration += (clip->end_time - clip->start_time);
+        }
     }
+
+    MediaClip* clip = clip_deque_.at(static_cast<unsigned int>(play_index_));
+    if (nullptr != player_) {
+        player_->Start(clip, video_count_duration);
+    }
+    LOGE("leave %s", __func__);
 }
 
-void VideoEditor::AllocVideoRenderEvent() {
-    on_video_render_event_ = reinterpret_cast<OnVideoRenderEvent*>(av_malloc(sizeof(OnVideoRenderEvent)));
-    memset(on_video_render_event_, 0, sizeof(OnVideoRenderEvent));
-    on_video_render_event_->on_render_video = OnVideoRender;
-    on_video_render_event_->context = this;
+void VideoEditor::Seek(int time) {
+    if (nullptr != player_) {
+        player_->Seek(time, INT_MAX);
+    }
 }
 
 int VideoEditor::Play(bool repeat, JNIEnv* env, jobject object) {
     if (clip_deque_.empty()) {
         return -1;
     }
-    FreeStateEvent();
-    AllocStateEvent();
-    FreeVideoRenderEvent();
-    AllocVideoRenderEvent();
     repeat_ = repeat;
     MediaClip* clip = clip_deque_.at(0);
-    video_player_->Start(clip->file_name,
-            clip->start_time, clip->end_time == 0 ? INT64_MAX : clip->end_time,
-            state_event_, on_video_render_event_);
+
+    if (nullptr != player_) {
+        return player_->Start(clip);
+    }
     return 0;
 }
 
 void VideoEditor::Pause() {
-    if (nullptr != video_player_) {
-        video_player_->Pause();
+    if (nullptr != player_) {
+        player_->Pause();
     }
 }
 
 void VideoEditor::Resume() {
-    if (nullptr != video_player_) {
-        video_player_->Resume();
+    if (nullptr != player_) {
+        player_->Resume();
     }
 }
 
@@ -361,97 +379,20 @@ void VideoEditor::Stop() {}
 
 void VideoEditor::Destroy() {
     LOGI("enter Destroy");
-    if (nullptr != video_player_) {
-        video_player_->Stop();
-        video_player_->Destroy();
+    if (nullptr != player_) {
+        player_->Destroy();
     }
 
     pthread_mutex_lock(&queue_mutex_);
-    for (int i = 0; i < clip_deque_.size(); ++i) {
-        MediaClip* clip = clip_deque_.at(i);
+    for (auto clip : clip_deque_) {
         delete[] clip->file_name;
         delete clip;
     }
     clip_deque_.clear();
     pthread_mutex_unlock(&queue_mutex_);
-    LOGE("start queue_mutex_ destroy");
     pthread_mutex_destroy(&queue_mutex_);
     pthread_cond_destroy(&queue_cond_);
-    FreeStateEvent();
-    FreeVideoRenderEvent();
-    handler_->PostMessage(new Message(MESSAGE_QUEUE_LOOP_QUIT_FLAG));
-    pthread_join(complete_thread_, nullptr);
-    LOGE("leave Destroy");
-}
-
-void* VideoEditor::CompleteThread(void* context) {
-    VideoEditor* video_editor = static_cast<VideoEditor *>(context);
-    video_editor->ProcessMessage();
-    pthread_exit(0);
-}
-
-void VideoEditor::ProcessMessage() {
-    bool running = true;
-    while (running) {
-        Message* msg = nullptr;
-        if (message_queue_->DequeueMessage(&msg, true) > 0) {
-            if (msg == nullptr) {
-                return;
-            }
-            if (MESSAGE_QUEUE_LOOP_QUIT_FLAG == msg->Execute()) {
-                running = false;
-            }
-            delete msg;
-        }
-    }
-}
-
-void VideoEditor::OnGLCreate() {
-    image_process_ = new ImageProcess();
-}
-
-void VideoEditor::OnGLMessage(trinity::Message *msg) {
-    switch (msg->GetWhat()) {
-//        case kFilter:
-//            if (nullptr != image_process_) {
-//                char* config = static_cast<char *>(msg->GetObj());
-//                image_process_->OnFilter(config, msg->GetArg1());
-//                delete[] config;
-//            }
-//            break;
-        case kEffect:
-            OnAddAction(static_cast<char *>(msg->GetObj()), msg->GetArg1());
-            break;
-
-        case kEffectUpdate:
-            OnUpdateAction(static_cast<char *>(msg->GetObj()), msg->GetArg1());
-            break;
-        default:
-            break;
-    }
-}
-
-void VideoEditor::OnGLDestroy() {
-    delete image_process_;
-    image_process_ = nullptr;
-}
-
-void VideoEditor::OnAddAction(char *config, int action_id) {
-    if (nullptr == image_process_) {
-        return;
-    }
-    LOGI("add action id: %d config: %s", action_id, config);
-    image_process_->OnAction(config, action_id);
-    delete[] config;
-}
-
-void VideoEditor::OnUpdateAction(char *config, int action_id) {
-    if (nullptr == image_process_) {
-        return;
-    }
-    LOGI("update action id: %d config: %s", action_id, config);
-    image_process_->OnAction(config, action_id);
-    delete[] config;
+    LOGI("leave Destroy");
 }
 
 }  // namespace trinity

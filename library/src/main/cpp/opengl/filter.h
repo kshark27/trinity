@@ -24,20 +24,26 @@
 #define TRINITY_FILTER_H
 
 #include "frame_buffer.h"
+#include "gl.h"
 
 namespace trinity {
 
 static const char* FILTER_FRAGMENT_SHADER =
-        "precision highp float;\n"
-        "varying highp vec2 textureCoordinate;\n"
-        "varying highp vec2 textureCoordinate2;\n"
-        "uniform sampler2D inputImageTexture;\n"
-        "uniform sampler2D inputImageTextureLookup;\n"
+        "#ifdef GL_ES                                                                                \n"
+        "precision highp float;                                                                      \n"
+        "varying highp vec2 textureCoordinate;                                                       \n"
+        "varying highp vec2 textureCoordinate2;                                                      \n"
+        "#else                                                                                       \n"
+        "varying vec2 textureCoordinate;                                                             \n"
+        "varying vec2 textureCoordinate2;                                                            \n"
+        "#endif                                                                                      \n"
+        "uniform sampler2D inputImageTexture;                                                        \n"
+        "uniform sampler2D inputImageTextureLookup;                                                  \n"
         "uniform float intensity;                                                                    \n"
         "void main () {                                                                              \n"
         " vec4 textureColor = texture2D(inputImageTexture, textureCoordinate);                       \n"
         " if (textureCoordinate.y < 1.0) {                                                           \n"
-        "     float yColor = textureColor.r * 63.0;                                                  \n"
+        "     float yColor = textureColor.b * 63.0;                                                  \n"
         "     vec2 quad1;                                                                            \n"
         "     quad1.y = floor(floor(yColor) / 8.0);                                                  \n"
         "     quad1.x = floor(yColor) - (quad1.y * 8.0);                                             \n"
@@ -45,33 +51,35 @@ static const char* FILTER_FRAGMENT_SHADER =
         "     quad2.y = floor(ceil(yColor) / 8.0);                                                   \n"
         "     quad2.x = ceil(yColor) - (quad2.y * 8.0);                                              \n"
         "     vec2 texPos1;                                                                          \n"
-        "     texPos1.x = (quad1.x * 0.125) + 0.5/512.0 + ((0.125 - 1.0/512.0) * textureColor.g);    \n"
-        "     texPos1.y = (quad1.y * 0.125) + 0.5/512.0 + ((0.125 - 1.0/512.0) * textureColor.b);    \n"
+        "     texPos1.x = (quad1.x * 0.125) + 0.5/512.0 + ((0.125 - 1.0/512.0) * textureColor.r);    \n"
+        "     texPos1.y = (quad1.y * 0.125) + 0.5/512.0 + ((0.125 - 1.0/512.0) * textureColor.g);    \n"
         "     vec2 texPos2;                                                                          \n"
-        "     texPos2.x = (quad2.x * 0.125) + 0.5/512.0 + ((0.125 - 1.0/512.0) * textureColor.g);    \n"
-        "     texPos2.y = (quad2.y * 0.125) + 0.5/512.0 + ((0.125 - 1.0/512.0) * textureColor.b);    \n"
+        "     texPos2.x = (quad2.x * 0.125) + 0.5/512.0 + ((0.125 - 1.0/512.0) * textureColor.r);    \n"
+        "     texPos2.y = (quad2.y * 0.125) + 0.5/512.0 + ((0.125 - 1.0/512.0) * textureColor.g);    \n"
         "     vec4 newColor1;                                                                        \n"
         "     vec4 newColor2;                                                                        \n"
         "     newColor1 = texture2D(inputImageTextureLookup, texPos1);                               \n"
         "     newColor2 = texture2D(inputImageTextureLookup, texPos2);                               \n"
         "     vec4 newColor = mix(newColor1, newColor2, fract(yColor));                              \n"
-        "     gl_FragColor = mix(textureColor, vec4(newColor.rgb, textureColor.w), intensity);       \n"
+        "     gl_FragColor = mix(textureColor, vec4(newColor.rgb, textureColor.a), intensity);       \n"
         " } else {                                                                                   \n"
         "     gl_FragColor = textureColor;                                                           \n"
         " }                                                                                          \n"
         "}\n";
 
 static const char* FILTER_VERTEX_SHADER =
-        "precision highp float;\n"
-        "attribute vec4 position;\n"
-        "attribute vec2 inputTextureCoordinate;\n"
-        "varying vec2 textureCoordinate;\n"
-        "varying vec2 textureCoordinate2;\n"
-        "void main() {\n"
-        "    gl_Position = position;\n"
-        "    textureCoordinate = inputTextureCoordinate.xy;\n"
-        "    textureCoordinate2 = inputTextureCoordinate.xy * 0.5 + 0.5;\n"
-        "}";
+        "#ifdef GL_ES                                                                                \n"
+        "precision highp float;                                                                      \n"
+        "#endif                                                                                      \n"
+        "attribute vec4 position;                                                                    \n"
+        "attribute vec2 inputTextureCoordinate;                                                      \n"
+        "varying vec2 textureCoordinate;                                                             \n"
+        "varying vec2 textureCoordinate2;                                                            \n"
+        "void main() {                                                                               \n"
+        "    gl_Position = position;                                                                 \n"
+        "    textureCoordinate = inputTextureCoordinate.xy;                                          \n"
+        "    textureCoordinate2 = inputTextureCoordinate.xy * 0.5 + 0.5;                             \n"
+        "}                                                                                           \n";
 
 
 class Filter : public FrameBuffer {

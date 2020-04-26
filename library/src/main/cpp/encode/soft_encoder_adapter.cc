@@ -19,29 +19,21 @@
 #include "android_xlog.h"
 #include "tools.h"
 
-#define NO_TIME_MILLS -1000
-
 namespace trinity {
 
 SoftEncoderAdapter::SoftEncoderAdapter(GLfloat* vertex_coordinate, GLfloat* texture_coordinate)
-    : yuy_packet_pool_(nullptr),
-      load_texture_context_(EGL_NO_CONTEXT),
-      vertex_coordinate_(nullptr),
-      texture_coordinate_(nullptr),
-      fbo_(0),
-      output_texture_id_(0),
-      egl_core_(nullptr),
-      encode_render_(nullptr),
-      pixel_size_(0),
-      encoder_(nullptr),
-      renderer_(nullptr),
-      time_mills_(0),
-      msg_(MSG_NONE),
-      copy_texture_surface_(EGL_NO_SURFACE) {
-    pthread_mutex_init(&lock_, NULL);
-    pthread_cond_init(&condition_, NULL);
-    pthread_mutex_init(&preview_thread_lock_, NULL);
-    pthread_cond_init(&preview_thread_condition_, NULL);
+    : yuy_packet_pool_(nullptr)
+    , encoding_(true)
+    , vertex_coordinate_(nullptr)
+    , texture_coordinate_(nullptr)
+    , fbo_(0)
+    , output_texture_id_(0)
+    , core_(nullptr)
+    , encode_render_(nullptr)
+    , pixel_size_(0)
+    , encoder_(nullptr)
+    , renderer_(nullptr)
+    , encoder_surface_(EGL_NO_SURFACE) {
 
     // 因为encoder_render时不能改变顶点和纹理坐标
     // 而glReadPixels读取的图像又是上下颠倒的
@@ -58,10 +50,6 @@ SoftEncoderAdapter::SoftEncoderAdapter(GLfloat* vertex_coordinate, GLfloat* text
 }
 
 SoftEncoderAdapter::~SoftEncoderAdapter() {
-    pthread_mutex_destroy(&lock_);
-    pthread_cond_destroy(&condition_);
-    pthread_mutex_destroy(&preview_thread_lock_);
-    pthread_cond_destroy(&preview_thread_condition_);
     if (nullptr != vertex_coordinate_) {
         delete[] vertex_coordinate_;
         vertex_coordinate_ = nullptr;
@@ -72,43 +60,26 @@ SoftEncoderAdapter::~SoftEncoderAdapter() {
     }
 }
 
-void SoftEncoderAdapter::CreateEncoder(EGLCore *eglCore, int inputTexId) {
+int SoftEncoderAdapter::CreateEncoder(EGLCore *core) {
     LOGI("enter CreateEncoder");
-    this->load_texture_context_ = eglCore->GetContext();
-    this->texture_id_ = inputTexId;
-    pixel_size_ = video_width_ * video_height_ * 3 / 2;
+    core_ = new EGLCore();
+    core_->Init(core->GetContext());
+    encoder_surface_ = core_->CreateOffscreenSurface(video_width_, video_height_);
+    core_->MakeCurrent(encoder_surface_);
 
+    pixel_size_ = video_width_ * video_height_ * 3 / 2;
     start_time_ = 0;
     fps_change_time_ = 0;
-
     encoder_ = new VideoX264Encoder(0);
-    encoder_->Init(video_width_, video_height_, video_bit_rate_, frame_rate_, packet_pool_);
+    int ret = encoder_->Init(video_width_, video_height_, video_bit_rate_, frame_rate_, packet_pool_);
     yuy_packet_pool_ = new VideoPacketQueue();
-    pthread_create(&x264_encoder_thread_, NULL, StartEncodeThread, this);
-    msg_ = MSG_WINDOW_SET;
-    pthread_create(&image_download_thread_, NULL, StartDownloadThread, this);
-
+    Initialize();
+    pthread_create(&x264_encoder_thread_, nullptr, StartEncodeThread, this);
     LOGI("leave CreateEncoder");
+    return ret;
 }
 
-void SoftEncoderAdapter::ReConfigure(int maxBitRate, int avgBitRate, int fps) {
-    if (encoder_) {
-        encoder_->ReConfigure(avgBitRate);
-    }
-}
-
-void SoftEncoderAdapter::HotConfig(int maxBitrate, int avgBitrate, int fps) {
-    if (encoder_) {
-        encoder_->ReConfigure(maxBitrate);
-    }
-
-    ResetFpsStartTimeIfNeed(fps);
-}
-
-void SoftEncoderAdapter::Encode(int timeMills) {
-    while (msg_ == MSG_WINDOW_SET || NULL == egl_core_) {
-        usleep(100 * 1000);
-    }
+void SoftEncoderAdapter::Encode(int64_t time, int texture_id) {
     if (start_time_ == 0)
         start_time_ = getCurrentTime();
 
@@ -117,134 +88,28 @@ void SoftEncoderAdapter::Encode(int timeMills) {
     }
 
     // need drop frames
-    int expectedFrameCount = (int) ((getCurrentTime() - fps_change_time_) / 1000.0f * frame_rate_ + 0.5f);
-//    if (expectedFrameCount < encode_frame_count_) {
-//        LOGE("expectedFrameCount is %d while encoded_frame_count_ is %d", expectedFrameCount,
-//             encode_frame_count_);
-//        return;
-//    }
-    time_mills_ = timeMills;
+//    int64_t current_time = static_cast<int64_t>((getCurrentTime() - fps_change_time_) * speed);
+    int expectedFrameCount = static_cast<int>(time / 1000.0F * frame_rate_ + 0.5F);
+    if (expectedFrameCount < encode_frame_count_) {
+        LOGE("expectedFrameCount is %d while encoded_frame_count_ is %d", expectedFrameCount,
+             encode_frame_count_);
+        return;
+    }
+    EncodeTexture(static_cast<GLuint>(texture_id), time);
     encode_frame_count_++;
-    pthread_mutex_lock(&preview_thread_lock_);
-    pthread_mutex_lock(&lock_);
-    pthread_cond_signal(&condition_);
-    pthread_mutex_unlock(&lock_);
-    pthread_cond_wait(&preview_thread_condition_, &preview_thread_lock_);
-    pthread_mutex_unlock(&preview_thread_lock_);
 }
 
 void SoftEncoderAdapter::DestroyEncoder() {
-    yuy_packet_pool_->Abort();
+    LOGE("enter: %s", __func__);
+    encoding_ = false;
     pthread_join(x264_encoder_thread_, 0);
-    delete yuy_packet_pool_;
-    yuy_packet_pool_ = nullptr;
-    if (NULL != encoder_) {
-        encoder_->Destroy();
-        delete encoder_;
-        encoder_ = NULL;
-    }
-
-    pthread_mutex_lock(&lock_);
-    msg_ = MSG_RENDER_LOOP_EXIT;
-    pthread_cond_signal(&condition_);
-    pthread_mutex_unlock(&lock_);
-    pthread_join(image_download_thread_, 0);
-}
-
-void *SoftEncoderAdapter::StartDownloadThread(void *ptr) {
-    SoftEncoderAdapter *softEncoderAdapter = reinterpret_cast<SoftEncoderAdapter*>(ptr);
-    softEncoderAdapter->renderLoop();
-    pthread_exit(0);
-}
-
-void SoftEncoderAdapter::renderLoop() {
-    bool renderingEnabled = true;
-    while (renderingEnabled) {
-        pthread_mutex_lock(&lock_);
-        switch (msg_) {
-            case MSG_WINDOW_SET:
-                LOGI("receive msg MSG_WINDOW_SET");
-                Initialize();
-                break;
-            case MSG_RENDER_LOOP_EXIT:
-                LOGI("receive msg MSG_RENDER_LOOP_EXIT");
-                renderingEnabled = false;
-                Destroy();
-                break;
-            default:
-                break;
-        }
-        msg_ = MSG_NONE;
-        if (nullptr != egl_core_ && nullptr != yuy_packet_pool_) {
-            egl_core_->MakeCurrent(copy_texture_surface_);
-            this->LoadTexture();
-            pthread_cond_wait(&condition_, &lock_);
-        }
-        pthread_mutex_unlock(&lock_);
-    }
-    return;
-}
-
-void SoftEncoderAdapter::LoadTexture() {
-    if (0 == start_time_ || time_mills_ == NO_TIME_MILLS) {
-        SignalPreviewThread();
-        return;
-    }
-//    int recordingDuration = getCurrentTime() - start_time_;
-//    glViewport(0, 0, video_width_, video_height_);
-    glBindFramebuffer(GL_FRAMEBUFFER, fbo_);
-    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, output_texture_id_, 0);
-    if (nullptr != vertex_coordinate_ && nullptr != texture_coordinate_) {
-        renderer_->ProcessImage(texture_id_, vertex_coordinate_, texture_coordinate_);
-    } else {
-        renderer_->ProcessImage(texture_id_);
-    }
-    glBindFramebuffer(GL_FRAMEBUFFER, 0);
-    this->SignalPreviewThread();
-    // TODO 这里需要设置一个buffer池
-    uint8_t *packetBuffer = new uint8_t[pixel_size_];
-    encode_render_->CopyYUV420Image(output_texture_id_, packetBuffer, video_width_, video_height_);
-    VideoPacket *videoPacket = new VideoPacket();
-    videoPacket->buffer = packetBuffer;
-    videoPacket->size = pixel_size_;
-    videoPacket->timeMills = time_mills_;
-    if (time_mills_ != -1) {
-        time_mills_ = NO_TIME_MILLS;
-    }
     if (nullptr != yuy_packet_pool_) {
-        yuy_packet_pool_->Put(videoPacket);
+        yuy_packet_pool_->Abort();
+        delete yuy_packet_pool_;
+        yuy_packet_pool_ = nullptr;
     }
-}
-
-void SoftEncoderAdapter::SignalPreviewThread() {
-    pthread_mutex_lock(&preview_thread_lock_);
-    pthread_cond_signal(&preview_thread_condition_);
-    pthread_mutex_unlock(&preview_thread_lock_);
-}
-
-bool SoftEncoderAdapter::Initialize() {
-    egl_core_ = new EGLCore();
-    egl_core_->Init(load_texture_context_);
-    copy_texture_surface_ = egl_core_->CreateOffscreenSurface(video_width_, video_height_);
-    egl_core_->MakeCurrent(copy_texture_surface_);
-    renderer_ = new OpenGL(video_width_, video_height_);
-    encode_render_ = new EncodeRender();
-    glGenFramebuffers(1, &fbo_);
-    //初始化outputTexId
-    glGenTextures(1, &output_texture_id_);
-    glBindTexture(GL_TEXTURE_2D, output_texture_id_);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, video_width_, video_height_, 0, GL_RGBA, GL_UNSIGNED_BYTE, 0);
-    glBindTexture(GL_TEXTURE_2D, 0);
-    return true;
-}
-
-void SoftEncoderAdapter::Destroy() {
-    if (nullptr != egl_core_) {
-        egl_core_->MakeCurrent(copy_texture_surface_);
+    if (nullptr != core_ && EGL_NO_SURFACE != encoder_surface_) {
+        core_->MakeCurrent(encoder_surface_);
         if (nullptr != encode_render_) {
             encode_render_->Destroy();
             delete encode_render_;
@@ -254,35 +119,87 @@ void SoftEncoderAdapter::Destroy() {
             glDeleteTextures(1, &output_texture_id_);
             output_texture_id_ = 0;
         }
-        // TODO delete texture
         if (fbo_ != 0) {
             glBindFramebuffer(GL_FRAMEBUFFER, 0);
             glDeleteFramebuffers(1, &fbo_);
             fbo_ = 0;
         }
-        egl_core_->ReleaseSurface(copy_texture_surface_);
         if (nullptr != renderer_) {
             delete renderer_;
             renderer_ = nullptr;
         }
-        egl_core_->Release();
-        delete egl_core_;
-        egl_core_ = nullptr;
+        core_->ReleaseSurface(encoder_surface_);
+        delete core_;
+        core_ = nullptr;
+    }
+
+    if (nullptr != encoder_) {
+        encoder_->Destroy();
+        delete encoder_;
+        encoder_ = nullptr;
     }
 }
 
-void *SoftEncoderAdapter::StartEncodeThread(void *ptr) {
-    SoftEncoderAdapter *softEncoderAdapter = reinterpret_cast<SoftEncoderAdapter *>(ptr);
-    softEncoderAdapter->startEncode();
+void SoftEncoderAdapter::EncodeTexture(GLuint texture_id, int time) {
+//    int recordingDuration = getCurrentTime() - start_time_;
+//    glViewport(0, 0, video_width_, video_height_);
+    core_->MakeCurrent(encoder_surface_);
+    glBindFramebuffer(GL_FRAMEBUFFER, fbo_);
+    if (nullptr != vertex_coordinate_ && nullptr != texture_coordinate_) {
+        renderer_->ProcessImage(texture_id, vertex_coordinate_, texture_coordinate_);
+    } else {
+        renderer_->ProcessImage(texture_id);
+    }
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    // TODO 这里需要设置一个buffer池
+    auto *packetBuffer = new uint8_t[pixel_size_];
+    encode_render_->CopyYUV420Image(output_texture_id_, packetBuffer, video_width_, video_height_);
+    auto *videoPacket = new VideoPacket();
+    videoPacket->buffer = packetBuffer;
+    videoPacket->size = pixel_size_;
+    videoPacket->timeMills = time;
+    if (nullptr != yuy_packet_pool_) {
+        yuy_packet_pool_->Put(videoPacket);
+    }
+}
+
+bool SoftEncoderAdapter::Initialize() {
+    renderer_ = new OpenGL(video_width_, video_height_);
+    encode_render_ = new EncodeRender();
+    glGenFramebuffers(1, &fbo_);
+    // 初始化outputTexId
+    glGenTextures(1, &output_texture_id_);
+    glBindFramebuffer(GL_FRAMEBUFFER, fbo_);
+    glBindTexture(GL_TEXTURE_2D, output_texture_id_);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, video_width_, video_height_, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, output_texture_id_, 0);
+    glBindTexture(GL_TEXTURE_2D, 0);
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    return true;
+}
+
+void *SoftEncoderAdapter::StartEncodeThread(void* args) {
+    auto softEncoderAdapter = reinterpret_cast<SoftEncoderAdapter*>(args);
+    softEncoderAdapter->StartEncode();
     pthread_exit(0);
 }
 
-void SoftEncoderAdapter::startEncode() {
+void SoftEncoderAdapter::StartEncode() {
     VideoPacket *videoPacket = nullptr;
     while (true) {
-        if (yuy_packet_pool_->Get(&videoPacket, true) < 0) {
-            LOGI("yuy_packet_pool_->GetRecordingVideoPacket return negetive value...");
+        if (yuy_packet_pool_->Size() <= 0 && !encoding_) {
             break;
+        }
+        if (yuy_packet_pool_->Size() <= 0) {
+            usleep(10000);
+            continue;
+        }
+        if (yuy_packet_pool_->Get(&videoPacket, true) < 0) {
+            continue;
         }
         if (videoPacket) {
             encoder_->Encode(videoPacket);
@@ -290,6 +207,7 @@ void SoftEncoderAdapter::startEncode() {
             videoPacket = nullptr;
         }
     }
+    LOGE("Encode done");
 }
 
 }  // namespace trinity

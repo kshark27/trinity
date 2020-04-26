@@ -1,3 +1,5 @@
+@file:Suppress("DEPRECATION")
+
 package com.trinity.sample
 
 import android.app.Application
@@ -30,12 +32,20 @@ class TrinityApplication : Application() {
   override fun onCreate() {
     super.onCreate()
 
-//    CrashReport.initCrashReport(applicationContext, "c998b23a2d", true)
+    CrashReport.initCrashReport(applicationContext, "c998b23a2d", true)
     val filterLocalDir = externalCacheDir?.absolutePath + "/filter/"
     val file = File(filterLocalDir)
     if (!file.exists()) {
       GlobalScope.launch(Dispatchers.IO) {
         copyAssets("filter", filterLocalDir)
+      }
+    }
+
+    val effectLocalDir = externalCacheDir?.absolutePath + "/effect"
+    val effectDir = File(effectLocalDir)
+    if (!effectDir.exists()) {
+      GlobalScope.launch(Dispatchers.IO) {
+        copyAssets("effect", effectLocalDir)
       }
     }
 
@@ -55,7 +65,7 @@ class TrinityApplication : Application() {
       return
     }
     val dest = File(targetPath)
-    dest.parentFile.mkdirs()
+    dest.parentFile?.mkdirs()
     try {
       val inputStream = BufferedInputStream(assets.open(source))
       val out = BufferedOutputStream(FileOutputStream(dest))

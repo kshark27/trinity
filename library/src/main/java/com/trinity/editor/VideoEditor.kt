@@ -22,7 +22,9 @@ import android.content.Context
 import android.view.Surface
 import android.view.SurfaceHolder
 import android.view.SurfaceView
+import com.tencent.mars.xlog.Log
 import com.trinity.ErrorCode
+import com.trinity.listener.OnRenderListener
 import java.io.File
 
 class VideoEditor(
@@ -35,6 +37,9 @@ class VideoEditor(
 
   private var mId: Long = 0
   private var mFilterActionId = NO_ACTION
+  // texture回调
+  // 可以做特效处理 textureId是TEXTURE_2D类型
+  private var mOnRenderListener: OnRenderListener ?= null
 
   init {
     val path = context.externalCacheDir?.absolutePath + "/resource.json"
@@ -202,18 +207,24 @@ class VideoEditor(
    * @param endTime 到哪里结束
    * @return 滤镜对应的id, 删除或者更新滤镜时需要用到
    */
-  override fun addFilter(config: String): Int {
-    mFilterActionId = addFilter(mId, config)
+  override fun addFilter(configPath: String): Int {
+    mFilterActionId = addFilter(mId, configPath)
     return mFilterActionId
   }
 
   private external fun addFilter(id: Long, config: String): Int
 
-  override fun updateFilter(config: String, actionId: Int) {
-    updateFilter(mId, config, actionId)
+  override fun updateFilter(configPath: String, startTime: Int, endTime: Int, actionId: Int) {
+    updateFilter(mId, configPath, startTime, endTime, actionId)
   }
 
-  private external fun updateFilter(id: Long, config: String, actionId: Int)
+  private external fun updateFilter(id: Long, config: String, startTime: Int, endTime: Int, actionId: Int)
+
+  override fun deleteFilter(actionId: Int) {
+    deleteFilter(mId, actionId)
+  }
+
+  private external fun deleteFilter(id: Long, actionId: Int)
 
   /**
    * 添加背景音乐
@@ -222,34 +233,86 @@ class VideoEditor(
    * @param endTime 到哪里结束
    * @return
    */
-  override fun addMusic(path: String, startTime: Long, endTime: Long): Int {
-    val file = File(path)
-    if (!file.exists() || file.length() == 0L) {
-      // 文件不存在
-      return ErrorCode.FILE_NOT_FOUND
-    }
-    return addMusic(mId, path, startTime, endTime)
+  override fun addMusic(config: String): Int {
+//    val file = File(path)
+//    if (!file.exists() || file.length() == 0L) {
+//      // 文件不存在
+//      return ErrorCode.FILE_NOT_FOUND
+//    }
+    return addMusic(mId, config)
   }
 
-  private external fun addMusic(id: Long, path: String, startTime: Long, endTime: Long): Int
+  private external fun addMusic(id: Long, config: String): Int
 
-  override fun addAction(config: String): Int {
+  override fun updateMusic(config: String, actionId: Int) {
+    if (mId <= 0) {
+      return
+    }
+    updateMusic(mId, config, actionId)
+  }
+
+  private external fun updateMusic(id: Long, config: String, actionId: Int)
+
+  override fun deleteMusic(actionId: Int) {
+    if (mId <= 0) {
+      return
+    }
+    deleteMusic(mId, actionId)
+  }
+
+  private external fun deleteMusic(id: Long, actionId: Int)
+
+  override fun addAction(configPath: String): Int {
     if (mId <= 0) {
       return -1
     }
-    return addAction(mId, config)
+    return addAction(mId, configPath)
   }
 
   private external fun addAction(handle: Long, config: String): Int
 
-  override fun updateAction(config: String, actionId: Int) {
+  override fun updateAction(startTime: Int, endTime: Int, actionId: Int) {
     if (mId <= 0) {
       return
     }
-    updateAction(mId, config, actionId)
+    updateAction(mId, startTime, endTime, actionId)
   }
 
-  private external fun updateAction(handle: Long, config: String, actionId: Int)
+  private external fun updateAction(handle: Long, startTime: Int, endTime: Int, actionId: Int)
+
+  override fun deleteAction(actionId: Int) {
+    if (mId <= 0) {
+      return
+    }
+    deleteAction(mId, actionId)
+  }
+
+  private external fun deleteAction(handle: Long, actionId: Int)
+
+  override fun setOnRenderListener(l: OnRenderListener) {
+    mOnRenderListener = l
+  }
+
+  /**
+   * texture回调
+   * 可以做其它特效处理, textureId为普通 TEXTURE_2D 类型
+   * @param textureId Int
+   * @param width Int
+   * @param height Int
+   */
+  @Suppress("unused")
+  private fun onDrawFrame(textureId: Int, width: Int, height: Int): Int {
+    return mOnRenderListener?.onDrawFrame(textureId, width, height, null) ?: textureId
+  }
+
+  override fun seek(time: Int) {
+    if (mId <= 0) {
+      return
+    }
+    seek(mId, time)
+  }
+
+  private external fun seek(id: Long, time: Int)
 
   /**
    * 开始播放
@@ -295,4 +358,14 @@ class VideoEditor(
   }
 
   private external fun release(id: Long)
+
+  @Suppress("unused")
+  private fun onPlayStatusChanged(status: Int) {
+
+  }
+
+  @Suppress("unused")
+  private fun onPlayError(error: Int) {
+
+  }
 }

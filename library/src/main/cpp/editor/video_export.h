@@ -31,13 +31,16 @@
 #include "video_encoder_adapter.h"
 #include "audio_encoder_adapter.h"
 #include "video_consumer_thread.h"
+#include "music_decoder.h"
+#include "decode/resample.h"
 #include "yuv_render.h"
 #include "image_process.h"
 #include "handler.h"
 #include "trinity.h"
 
 extern "C" {
-#include "ffmpeg_decode.h"
+#include "av_play.h"
+#include "queue.h"
 #include "cJSON.h"
 };
 
@@ -56,24 +59,32 @@ class VideoExport {
 
     int Export(const char* export_config, const char* path,
             int width, int height, int frame_rate, int video_bit_rate,
-            int sample_rate, int channel_count, int audio_bit_rate);
+            int sample_rate, int channel_count, int audio_bit_rate,
+            bool media_codec_decode, bool media_codec_encode);
 
-    int OnComplete();
-
+    void Cancel();
  private:
+    void CreateEncode(bool media_codec_encode);
+    static void OnCompleteEvent(AVPlayContext* context);
+    static void OnStatusChanged(AVPlayContext* context, PlayStatus status);
+    int OnComplete();
     static void* ExportVideoThread(void* context);
-    static int OnCompleteState(StateEvent* event);
     static void* ExportAudioThread(void* context);
-    static void* ExportMessageThread(void* context);
     void StartDecode(MediaClip* clip);
+    void LoadImageTexture(MediaClip* clip);
     void FreeResource();
+    void OnFilter();
     void OnEffect();
+    void OnMusics();
+    void SetFrame(int source_width, int source_height,
+            int target_width, int target_height, RenderFrame frame_type);
     void ProcessVideoExport();
     void ProcessAudioExport();
-    void OnExportProgress(uint64_t current_time);
+    void OnExportProgress(int64_t current_time);
     void OnExportComplete();
+    void OnCancel();
     int Resample();
-    void ProcessMessage();
+    int FillMuteAudio();
 
  private:
     JavaVM* vm_;
@@ -81,61 +92,57 @@ class VideoExport {
     int64_t video_duration_;
     pthread_t export_video_thread_;
     pthread_t export_audio_thread_;
+    MediaClip* current_media_clip_;
     std::deque<MediaClip*> clip_deque_;
-    bool export_ing;
+    std::deque<MusicDecoder*> music_decoder_deque_;
+    std::deque<trinity::Resample*> resample_deque_;
+    int accompany_packet_buffer_size_;
+    int accompany_sample_rate_;
+    int vocal_sample_rate_;
+    int channel_count_;
+    bool export_ing_;
+    bool cancel_;
     EGLCore* egl_core_;
     EGLSurface egl_surface_;
-    MediaDecode* media_decode_;
-    StateEvent* state_event_;
+    GLuint encode_texture_id_;
+    GLuint image_texture_;
+    int64_t image_render_time_;
+    bool load_image_texture_;
     int export_index_;
     int video_width_;
     int video_height_;
+    int frame_rate_;
+    int video_bit_rate_;
     int frame_width_;
     int frame_height_;
     YuvRender* yuv_render_;
     ImageProcess* image_process_;
+    bool media_codec_encode_;
     VideoEncoderAdapter* encoder_;
     AudioEncoderAdapter* audio_encoder_adapter_;
     VideoConsumerThread* packet_thread_;
     PacketPool* packet_pool_;
-    uint64_t current_time_;
-    uint64_t previous_time_;
+    int64_t current_time_;
+    int64_t previous_time_;
     SwrContext* swr_context_;
-    uint8_t *audio_buf;
+    uint8_t *audio_buffer_;
+    int audio_current_time_;
     uint8_t *audio_buf1;
     short* audio_samples_;
-    VideoExportHandler* video_export_handler_;
-    MessageQueue* video_export_message_queue_;
-    pthread_t export_message_thread_;
-    int time_diff_;
     pthread_mutex_t media_mutex_;
     pthread_cond_t media_cond_;
-
+    pthread_mutex_t audio_mutex_;
+    pthread_cond_t audio_cond_;
     cJSON* export_config_json_;
     GLfloat* vertex_coordinate_;
     GLfloat* texture_coordinate_;
-};
-
-class VideoExportHandler : public Handler {
- public:
-    VideoExportHandler(VideoExport* video_export, MessageQueue* queue) : Handler(queue) {
-        video_export_ = video_export;
-    }
-
-    void HandleMessage(Message* msg) {
-        int what = msg->GetWhat();
-        switch (what) {
-            case kStartNextExport:
-                video_export_->OnComplete();
-                break;
-
-            default:
-                break;
-        }
-    }
-
- private:
-    VideoExport* video_export_;
+    GLfloat* crop_vertex_coordinate_;
+    GLfloat* crop_texture_coordinate_;
+    GLfloat* texture_matrix_;
+    AVPlayContext* av_play_context_;
+    uint8_t* image_audio_buffer_;
+    int image_audio_buffer_time_;
+    FrameBuffer* image_frame_buffer_;
 };
 
 }  // namespace trinity

@@ -25,6 +25,7 @@ class MediaFragment : Fragment() {
     super.onViewCreated(view, savedInstanceState)
     mTabLayout = view.findViewById(R.id.tab_layout)
     val viewPager = view.findViewById<ViewPager>(R.id.view_pager)
+    viewPager.offscreenPageLimit = 2
     activity?.let {
       mAdapter = MediaPagerAdapter(it.supportFragmentManager)
       viewPager.adapter = mAdapter
@@ -43,12 +44,19 @@ class MediaFragment : Fragment() {
   }
 
   private fun getSelectMedias(): MutableList<MediaItem>? {
-    val position = mTabLayout.selectedTabPosition
-    return when (val fragment = mAdapter?.getItem(position)) {
-      is VideoFragment -> fragment.getSelectMedias()
-      is PictureFragment -> fragment.getSelectMedias()
-      else -> null
+    val medias = mutableListOf<MediaItem>()
+    val count = mAdapter?.count ?: 0
+    for (index in 0 until count) {
+      when (val fragment = mAdapter?.getItem(index)) {
+        is VideoFragment -> {
+          medias.addAll(fragment.getSelectMedias())
+        }
+        is PictureFragment -> {
+          medias.addAll(fragment.getSelectMedias())
+        }
+      }
     }
+    return medias
   }
 
 }

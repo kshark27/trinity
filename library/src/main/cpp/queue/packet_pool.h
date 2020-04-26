@@ -35,7 +35,6 @@ namespace trinity {
 
 class PacketPool {
  protected:
-    PacketPool();
     static PacketPool* instance_;
     AudioPacketQueue* audio_packet_queue_;
     int audio_sample_rate_;
@@ -53,8 +52,7 @@ class PacketPool {
     int buffer_cursor_;
     bool DetectDiscardVideoPacket();
     /** 为了计算每一帧的时间长度 **/
-    VideoPacket *temp_video_packet_;
-    int temp_video_packet_ref_count_;
+    int video_packet_duration_;
     int accompany_buffer_size_;
     short* accompany_buffer_;
     int accompany_buffer_cursor_;
@@ -66,6 +64,7 @@ class PacketPool {
 
  public:
     static PacketPool* GetInstance();
+    PacketPool();
     virtual ~PacketPool();
 
     virtual void InitAudioPacketQueue(int audio_sample_rate);
@@ -79,7 +78,7 @@ class PacketPool {
     /** 解码出来的伴奏的queue的所有操作 **/
     virtual void InitDecoderAccompanyPacketQueue();
     virtual void AbortDecoderAccompanyPacketQueue();
-    virtual void DestoryDecoderAccompanyPacketQueue();
+    virtual void DestroyDecoderAccompanyPacketQueue();
     virtual int GetDecoderAccompanyPacket(AudioPacket **audioPacket, bool block);
     virtual void PushDecoderAccompanyPacketToQueue(AudioPacket *audioPacket);
     virtual void ClearDecoderAccompanyPacketToQueue();
@@ -97,7 +96,7 @@ class PacketPool {
     void InitRecordingVideoPacketQueue();
     void AbortRecordingVideoPacketQueue();
     void DestroyRecordingVideoPacketQueue();
-    int GetRecordingVideoPacket(VideoPacket **videoPacket, bool block);
+    int GetRecordingVideoPacket(VideoPacket **videoPacket, bool block, bool wait = true);
     bool PushRecordingVideoPacketToQueue(VideoPacket *videoPacket);
     int GetRecordingVideoPacketQueueSize();
     void ClearRecordingVideoPacketToQueue();

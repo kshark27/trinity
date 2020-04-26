@@ -13,14 +13,14 @@
 		702B75BF2313E4E40089082D /* pixel_late.cc in Sources */ = {isa = PBXBuildFile; fileRef = 702B75B92313E4E40089082D /* pixel_late.cc */; };
 		702B75C32314005D0089082D /* OpenGL.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 702B75C22314005D0089082D /* OpenGL.framework */; };
 		702B75C5231400770089082D /* libglfw.3.2.dylib in Frameworks */ = {isa = PBXBuildFile; fileRef = 702B75C4231400770089082D /* libglfw.3.2.dylib */; };
-		702B75CC23140B870089082D /* libavcodec.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 702B75C623140B870089082D /* libavcodec.a */; };
-		702B75CD23140B870089082D /* libavformat.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 702B75C723140B870089082D /* libavformat.a */; };
-		702B75CE23140B870089082D /* libavresample.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 702B75C823140B870089082D /* libavresample.a */; };
-		702B75CF23140B870089082D /* libavutil.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 702B75C923140B870089082D /* libavutil.a */; };
-		702B75D023140B870089082D /* libswresample.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 702B75CA23140B870089082D /* libswresample.a */; };
-		702B75D123140B870089082D /* libavfilter.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 702B75CB23140B870089082D /* libavfilter.a */; };
-		702B75D32314C9950089082D /* matrix.cc in Sources */ = {isa = PBXBuildFile; fileRef = 702B75D22314C9950089082D /* matrix.cc */; };
 		7064C9E62318EEF700F5D22B /* gaussian_blur.cc in Sources */ = {isa = PBXBuildFile; fileRef = 7064C9E52318EEF700F5D22B /* gaussian_blur.cc */; };
+		7091C9D423A3D2B900E3D958 /* image_process.cc in Sources */ = {isa = PBXBuildFile; fileRef = 7091C9D323A3D2B900E3D958 /* image_process.cc */; };
+		70AA611223AB45D200F84CFD /* process_buffer.cc in Sources */ = {isa = PBXBuildFile; fileRef = 70AA611123AB45D200F84CFD /* process_buffer.cc */; };
+		70AA611523ACCE2C00F84CFD /* effect.cc in Sources */ = {isa = PBXBuildFile; fileRef = 70AA611323ACCE2B00F84CFD /* effect.cc */; };
+		70CCE876240D4B7E00CB63E9 /* face_markup_render.cc in Sources */ = {isa = PBXBuildFile; fileRef = 70CCE872240D4B7E00CB63E9 /* face_markup_render.cc */; };
+		70D4CCA023B76A370040B68E /* blend.cc in Sources */ = {isa = PBXBuildFile; fileRef = 70D4CC9F23B76A370040B68E /* blend.cc */; };
+		70D8854D2362F1BF004E5C33 /* cJSON.c in Sources */ = {isa = PBXBuildFile; fileRef = 70D8854B2362F1BF004E5C33 /* cJSON.c */; };
+		70D8854E2362F1BF004E5C33 /* cJSON_Utils.c in Sources */ = {isa = PBXBuildFile; fileRef = 70D8854C2362F1BF004E5C33 /* cJSON_Utils.c */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXCopyFilesBuildPhase section */
@@ -50,18 +50,29 @@
 		702B75BC2313E4E40089082D /* yuv_render.cc */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = yuv_render.cc; sourceTree = "<group>"; };
 		702B75C22314005D0089082D /* OpenGL.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = OpenGL.framework; path = System/Library/Frameworks/OpenGL.framework; sourceTree = SDKROOT; };
 		702B75C4231400770089082D /* libglfw.3.2.dylib */ = {isa = PBXFileReference; lastKnownFileType = "compiled.mach-o.dylib"; name = libglfw.3.2.dylib; path = ../../../../../../../../usr/local/Cellar/glfw/3.2.1/lib/libglfw.3.2.dylib; sourceTree = "<group>"; };
-		702B75C623140B870089082D /* libavcodec.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libavcodec.a; path = ../../../../../../../../usr/local/Cellar/ffmpeg/4.1.3_1/lib/libavcodec.a; sourceTree = "<group>"; };
-		702B75C723140B870089082D /* libavformat.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libavformat.a; path = ../../../../../../../../usr/local/Cellar/ffmpeg/4.1.3_1/lib/libavformat.a; sourceTree = "<group>"; };
-		702B75C823140B870089082D /* libavresample.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libavresample.a; path = ../../../../../../../../usr/local/Cellar/ffmpeg/4.1.3_1/lib/libavresample.a; sourceTree = "<group>"; };
-		702B75C923140B870089082D /* libavutil.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libavutil.a; path = ../../../../../../../../usr/local/Cellar/ffmpeg/4.1.3_1/lib/libavutil.a; sourceTree = "<group>"; };
-		702B75CA23140B870089082D /* libswresample.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libswresample.a; path = ../../../../../../../../usr/local/Cellar/ffmpeg/4.1.3_1/lib/libswresample.a; sourceTree = "<group>"; };
-		702B75CB23140B870089082D /* libavfilter.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libavfilter.a; path = ../../../../../../../../usr/local/Cellar/ffmpeg/4.1.3_1/lib/libavfilter.a; sourceTree = "<group>"; };
-		702B75D22314C9950089082D /* matrix.cc */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = matrix.cc; path = util/matrix.cc; sourceTree = "<group>"; };
 		7048204B231A668B00FCE038 /* blur_split_screen.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = blur_split_screen.h; sourceTree = "<group>"; };
 		705552712314CCEA007D98BB /* gl.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = gl.h; sourceTree = "<group>"; };
 		7064C9E42318EEF700F5D22B /* gaussian_blur.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = gaussian_blur.h; sourceTree = "<group>"; };
 		7064C9E52318EEF700F5D22B /* gaussian_blur.cc */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = gaussian_blur.cc; sourceTree = "<group>"; };
+		7091C9D223A3D2B900E3D958 /* image_process.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = image_process.h; sourceTree = "<group>"; };
+		7091C9D323A3D2B900E3D958 /* image_process.cc */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = image_process.cc; sourceTree = "<group>"; };
+		70AA611023AB45D200F84CFD /* process_buffer.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = process_buffer.h; sourceTree = "<group>"; };
+		70AA611123AB45D200F84CFD /* process_buffer.cc */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = process_buffer.cc; sourceTree = "<group>"; };
+		70AA611323ACCE2B00F84CFD /* effect.cc */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = effect.cc; sourceTree = "<group>"; };
+		70AA611423ACCE2C00F84CFD /* effect.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = effect.h; sourceTree = "<group>"; };
+		70AA611623AE4F9500F84CFD /* image_buffer.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = image_buffer.h; sourceTree = "<group>"; };
 		70C9469D2319507E00728A62 /* opengl_observer.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = opengl_observer.h; sourceTree = "<group>"; };
+		70CCE870240D405C00CB63E9 /* face.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = face.h; sourceTree = "<group>"; };
+		70CCE872240D4B7E00CB63E9 /* face_markup_render.cc */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = face_markup_render.cc; sourceTree = "<group>"; };
+		70CCE873240D4B7E00CB63E9 /* face_markup_render.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = face_markup_render.h; sourceTree = "<group>"; };
+		70CCE874240D4B7E00CB63E9 /* face_point.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = face_point.h; sourceTree = "<group>"; };
+		70CCE875240D4B7E00CB63E9 /* face_detection.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = face_detection.h; sourceTree = "<group>"; };
+		70D4CC9C23B75B060040B68E /* blend.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = blend.h; sourceTree = "<group>"; };
+		70D4CC9F23B76A370040B68E /* blend.cc */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = blend.cc; sourceTree = "<group>"; };
+		70D885492362F1BF004E5C33 /* cJSON.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = cJSON.h; sourceTree = "<group>"; };
+		70D8854A2362F1BF004E5C33 /* cJSON_Utils.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = cJSON_Utils.h; sourceTree = "<group>"; };
+		70D8854B2362F1BF004E5C33 /* cJSON.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = cJSON.c; sourceTree = "<group>"; };
+		70D8854C2362F1BF004E5C33 /* cJSON_Utils.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = cJSON_Utils.c; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -69,12 +80,6 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				702B75CC23140B870089082D /* libavcodec.a in Frameworks */,
-				702B75CD23140B870089082D /* libavformat.a in Frameworks */,
-				702B75CE23140B870089082D /* libavresample.a in Frameworks */,
-				702B75CF23140B870089082D /* libavutil.a in Frameworks */,
-				702B75D023140B870089082D /* libswresample.a in Frameworks */,
-				702B75D123140B870089082D /* libavfilter.a in Frameworks */,
 				702B75C5231400770089082D /* libglfw.3.2.dylib in Frameworks */,
 				702B75C32314005D0089082D /* OpenGL.framework in Frameworks */,
 			);
@@ -86,7 +91,7 @@
 		702B759A2313E2390089082D = {
 			isa = PBXGroup;
 			children = (
-				702B75D22314C9950089082D /* matrix.cc */,
+				70D885482362F1BF004E5C33 /* json */,
 				702B75A52313E2390089082D /* opengl */,
 				702B75A42313E2390089082D /* Products */,
 				702B75C12314005D0089082D /* Frameworks */,
@@ -104,6 +109,20 @@
 		702B75A52313E2390089082D /* opengl */ = {
 			isa = PBXGroup;
 			children = (
+				70CCE875240D4B7E00CB63E9 /* face_detection.h */,
+				70CCE872240D4B7E00CB63E9 /* face_markup_render.cc */,
+				70CCE873240D4B7E00CB63E9 /* face_markup_render.h */,
+				70CCE874240D4B7E00CB63E9 /* face_point.h */,
+				70CCE870240D405C00CB63E9 /* face.h */,
+				70D4CC9F23B76A370040B68E /* blend.cc */,
+				70D4CC9C23B75B060040B68E /* blend.h */,
+				70AA611623AE4F9500F84CFD /* image_buffer.h */,
+				70AA611323ACCE2B00F84CFD /* effect.cc */,
+				70AA611423ACCE2C00F84CFD /* effect.h */,
+				70AA611123AB45D200F84CFD /* process_buffer.cc */,
+				70AA611023AB45D200F84CFD /* process_buffer.h */,
+				7091C9D323A3D2B900E3D958 /* image_process.cc */,
+				7091C9D223A3D2B900E3D958 /* image_process.h */,
 				705552712314CCEA007D98BB /* gl.h */,
 				702B75B72313E4E40089082D /* filter.h */,
 				702B75BA2313E4E40089082D /* flash_white.h */,
@@ -127,16 +146,21 @@
 		702B75C12314005D0089082D /* Frameworks */ = {
 			isa = PBXGroup;
 			children = (
-				702B75C623140B870089082D /* libavcodec.a */,
-				702B75CB23140B870089082D /* libavfilter.a */,
-				702B75C723140B870089082D /* libavformat.a */,
-				702B75C823140B870089082D /* libavresample.a */,
-				702B75C923140B870089082D /* libavutil.a */,
-				702B75CA23140B870089082D /* libswresample.a */,
 				702B75C4231400770089082D /* libglfw.3.2.dylib */,
 				702B75C22314005D0089082D /* OpenGL.framework */,
 			);
 			name = Frameworks;
+			sourceTree = "<group>";
+		};
+		70D885482362F1BF004E5C33 /* json */ = {
+			isa = PBXGroup;
+			children = (
+				70D885492362F1BF004E5C33 /* cJSON.h */,
+				70D8854A2362F1BF004E5C33 /* cJSON_Utils.h */,
+				70D8854B2362F1BF004E5C33 /* cJSON.c */,
+				70D8854C2362F1BF004E5C33 /* cJSON_Utils.c */,
+			);
+			path = json;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -195,11 +219,17 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				702B75D32314C9950089082D /* matrix.cc in Sources */,
+				70D4CCA023B76A370040B68E /* blend.cc in Sources */,
+				70CCE876240D4B7E00CB63E9 /* face_markup_render.cc in Sources */,
 				702B75BF2313E4E40089082D /* pixel_late.cc in Sources */,
 				702B75BD2313E4E40089082D /* opengl.cc in Sources */,
+				70AA611223AB45D200F84CFD /* process_buffer.cc in Sources */,
+				70D8854E2362F1BF004E5C33 /* cJSON_Utils.c in Sources */,
 				7064C9E62318EEF700F5D22B /* gaussian_blur.cc in Sources */,
+				70AA611523ACCE2C00F84CFD /* effect.cc in Sources */,
+				70D8854D2362F1BF004E5C33 /* cJSON.c in Sources */,
 				702B75B22313E40B0089082D /* main.cc in Sources */,
+				7091C9D423A3D2B900E3D958 /* image_process.cc in Sources */,
 				702B75BE2313E4E40089082D /* frame_buffer.cc in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -321,17 +351,20 @@
 		702B75AB2313E2390089082D /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				CLANG_CXX_LANGUAGE_STANDARD = "c++0x";
+				CLANG_WARN_DOCUMENTATION_COMMENTS = NO;
 				CODE_SIGN_STYLE = Automatic;
 				HEADER_SEARCH_PATHS = (
 					"${PROJECT_DIR}/util",
-					/usr/local/Cellar/ffmpeg/4.1.3_1/include/,
+					/usr/local/Cellar/ffmpeg/4.2.1_1/include/,
 					/usr/local/Cellar/glfw/3.2.1/include/GLFW,
 					"${PROJECT_DIR}/stb",
+					"${PROJECT_DIR}/../../../../extra/glm/glm",
 				);
 				LIBRARY_SEARCH_PATHS = (
 					"$(inherited)",
 					/usr/local/Cellar/glfw/3.2.1/lib,
-					/usr/local/Cellar/ffmpeg/4.1.3_1/lib,
+					/usr/local/Cellar/ffmpeg/4.2.1_1/lib,
 				);
 				OTHER_CFLAGS = "";
 				OTHER_CPLUSPLUSFLAGS = "$(OTHER_CFLAGS)";
@@ -343,17 +376,20 @@
 		702B75AC2313E2390089082D /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				CLANG_CXX_LANGUAGE_STANDARD = "c++0x";
+				CLANG_WARN_DOCUMENTATION_COMMENTS = NO;
 				CODE_SIGN_STYLE = Automatic;
 				HEADER_SEARCH_PATHS = (
 					"${PROJECT_DIR}/util",
-					/usr/local/Cellar/ffmpeg/4.1.3_1/include/,
+					/usr/local/Cellar/ffmpeg/4.2.1_1/include/,
 					/usr/local/Cellar/glfw/3.2.1/include/GLFW,
 					"${PROJECT_DIR}/stb",
+					"${PROJECT_DIR}/../../../../extra/glm/glm",
 				);
 				LIBRARY_SEARCH_PATHS = (
 					"$(inherited)",
 					/usr/local/Cellar/glfw/3.2.1/lib,
-					/usr/local/Cellar/ffmpeg/4.1.3_1/lib,
+					/usr/local/Cellar/ffmpeg/4.2.1_1/lib,
 				);
 				OTHER_CFLAGS = "";
 				OTHER_CPLUSPLUSFLAGS = "$(OTHER_CFLAGS)";

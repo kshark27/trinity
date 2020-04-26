@@ -44,16 +44,13 @@ namespace trinity {
 
 class YuvRender {
  public:
-    YuvRender(int width, int height, int view_width, int view_height, int degree);
-
+    YuvRender();
     ~YuvRender();
-
-    virtual int DrawFrame(AVFrame *frame);
+    virtual GLuint DrawFrame(AVFrame* frame, const GLfloat* matrix,
+            const GLfloat* vertex_coordinate, const GLfloat* texture_coordinate);
 
  private:
-    static void ConvertVertexCoordinate(int width, int height, int view_width, int view_height);
-
-    int Initialize(int width, int height);
+    int Initialize(int width, int height, const char* fragment_shader);
     void Destroy();
     void CopyFrame(uint8_t *dst, uint8_t *src, int width, int height, int line_size);
     void CreateProgram(const char* vertex, const char* fragment);
@@ -63,12 +60,11 @@ class YuvRender {
  private:
     GLuint frame_buffer_id_;
     GLuint texture_id_;
-    GLfloat *vertex_coordinate_;
-    GLfloat *texture_coordinate_;
     GLuint textures[3];
     GLuint program_;
-    GLint vertex_coordinate_location_;
-    GLint texture_coordinate_location_;
+    GLuint vertex_coordinate_location_;
+    GLuint texture_coordinate_location_;
+    GLuint matrix_location_;
     GLint uniform_samplers_[3];
 
     uint8_t *y;

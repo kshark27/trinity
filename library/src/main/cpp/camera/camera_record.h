@@ -24,12 +24,16 @@
 
 #include <android/native_window.h>
 #include <android/native_window_jni.h>
+#include <trinity.h>
 #include "egl_core.h"
 #include "handler.h"
 #include "frame_buffer.h"
 #include "video_encoder_adapter.h"
 #include "video_consumer_thread.h"
 #include "soft_encoder_adapter.h"
+#include "image_process.h"
+#include "buffer_pool.h"
+#include "face_detection.h"
 
 namespace trinity {
 
@@ -45,9 +49,7 @@ enum RenderThreadMessage {
     MSG_EGL_THREAD_EXIT
 };
 
-class CameraRecordHandler;
-
-class CameraRecord {
+class CameraRecord : public Handler, public FaceDetection {
  public:
     explicit CameraRecord(JNIEnv* env);
     virtual ~CameraRecord();
@@ -73,19 +75,9 @@ class CameraRecord {
 
     virtual void DestroyEGLContext();
 
-    virtual bool Initialize();
-
-    virtual void Destroy();
-
-    void CreatePreviewSurface();
-
-    void DestroyPreviewSurface();
-
     void CreateWindowSurface(ANativeWindow *window);
 
     void DestroyWindowSurface();
-
-    void SwitchCamera();
 
     void StartEncoding(const char* path,
             int width,
@@ -97,9 +89,37 @@ class CameraRecord {
             int audio_channel,
             int audio_bit_rate);
 
-    void StartRecording();
-
     void StopEncoding();
+
+    int AddFilter(const char* config_path);
+
+    void UpdateFilter(const char* config_path, int start_time, int end_time, int action_id);
+
+    void DeleteFilter(int action_id);
+
+    int AddAction(const char* config_path);
+
+    void UpdateActionTime(int start_time, int end_time, int action_id);
+
+    void UpdateActionParam(int action_id, const char* effect_name, const char* param_name, float value);
+
+    void DeleteAction(int action_id);
+
+    virtual void FaceDetector(std::vector<FaceDetectionReport*>& face_detection);
+ private:
+    void CreateEncode(bool media_codec_encode);
+
+    virtual bool Initialize();
+
+    virtual void Destroy();
+
+    void CreatePreviewSurface();
+
+    void DestroyPreviewSurface();
+
+    void SwitchCamera();
+
+    void StartRecording();
 
     void StopRecording();
 
@@ -107,7 +127,6 @@ class CameraRecord {
 
     void SetFrameType(int frame);
 
- private:
     void Draw();
 
     void ConfigCamera();
@@ -130,9 +149,30 @@ class CameraRecord {
 
     void ProcessMessage();
 
+    void FPS();
+
+    void OnAddFilter(char* config_path, int action_id);
+
+    void OnUpdateFilter(char* config_path, int action_id,
+            int start_time, int end_time);
+
+    void OnDeleteFilter(int action_id);
+
+    void OnAddAction(char* config_path, int action_id);
+
+    void OnUpdateActionTime(int start_time, int end_time, int action_id);
+
+    void OnUpdateActionParam(EffectParam* param);
+
+    void OnDeleteAction(int action_id);
+
+    int GetCameraFacing();
+
+    void GetFaceDetectionReports(std::vector<FaceDetectionReport*>& face_detection_reports);
+
+    virtual void HandleMessage(Message* msg);
  private:
     ANativeWindow *window_;
-    JNIEnv* env_;
     JavaVM *vm_;
     jobject obj_;
     int screen_width_;
@@ -147,7 +187,6 @@ class CameraRecord {
     EGLSurface preview_surface_;
     FrameBuffer* frame_buffer_;
     OpenGL* render_screen_;
-    CameraRecordHandler* handler_;
     MessageQueue* queue_;
     pthread_t thread_id_;
     GLuint oes_texture_id_;
@@ -155,55 +194,23 @@ class CameraRecord {
     VideoEncoderAdapter* encoder_;
     bool encoding_;
     VideoConsumerThread* packet_thread_;
-    int64_t start_time_;
     float speed_;
-    int render_type_;
-};
-
-class CameraRecordHandler : public Handler {
- public:
-    CameraRecordHandler(CameraRecord* record,
-            MessageQueue* queue) : Handler(queue) {
-        record_ = record;
-    }
-
-    void HandleMessage(Message* msg) {
-        int what = msg->GetWhat();
-        switch (what) {
-            case MSG_EGL_THREAD_CREATE:
-                record_->Initialize();
-                break;
-            case MSG_EGL_CREATE_PREVIEW_SURFACE:
-                record_->CreatePreviewSurface();
-                break;
-            case MSG_SWITCH_CAMERA_FACING:
-                record_->SwitchCamera();
-                break;
-            case MSG_START_RECORDING:
-                record_->StartRecording();
-                break;
-            case MSG_STOP_RECORDING:
-                record_->StopRecording();
-                break;
-            case MSG_EGL_DESTROY_PREVIEW_SURFACE:
-                record_->DestroyPreviewSurface();
-                break;
-            case MSG_EGL_THREAD_EXIT:
-                record_->Destroy();
-                break;
-            case MSG_RENDER_FRAME:
-                record_->RenderFrame();
-                break;
-            case MSG_SET_FRAME:
-                record_->SetFrameType(msg->GetArg1());
-                break;
-            default:
-                break;
-        }
-    }
-
- private:
-    CameraRecord* record_;
+    int frame_type_;
+    int frame_count_;
+    int64_t pre_fps_count_time_;
+    float fps_;
+    bool start_recording;
+    int current_action_id_;
+    ImageProcess* image_process_;
+    int64_t render_time_;
+    int64_t encode_time_;
+    int camera_facing_id_;
+    BufferPool* message_pool_;
+    bool media_codec_encode_;
+    int video_width_;
+    int video_height_;
+    int frame_rate_;
+    int video_bit_rate_;
 };
 
 }  // namespace trinity

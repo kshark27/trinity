@@ -1,47 +1,39 @@
+@file:Suppress("DEPRECATION")
+
 package com.trinity.sample
 
 import android.annotation.SuppressLint
 import android.content.Intent
-import android.graphics.BitmapFactory
 import android.graphics.Point
 import android.os.Bundle
-import android.os.Environment
 import android.util.TypedValue
 import android.view.*
 import android.view.GestureDetector.SimpleOnGestureListener
 import android.widget.*
 import androidx.appcompat.app.AppCompatActivity
-import androidx.recyclerview.widget.DividerItemDecoration
-import androidx.recyclerview.widget.LinearLayoutManager
-import androidx.recyclerview.widget.RecyclerView
-import com.google.android.material.bottomsheet.BottomSheetDialog
-import com.tencent.mars.xlog.Log
-import com.tencent.mars.xlog.Xlog
-import com.trinity.editor.EffectType
+import androidx.coordinatorlayout.widget.CoordinatorLayout
+import androidx.fragment.app.transaction
+import com.google.android.material.bottomsheet.BottomSheetBehavior
+import com.trinity.core.TrinityCore
 import com.trinity.editor.MediaClip
 import com.trinity.editor.TimeRange
-import com.trinity.editor.VideoEditor
-import com.trinity.sample.adapter.MusicAdapter
+import com.trinity.editor.TrinityVideoEditor
+import com.trinity.listener.OnRenderListener
 import com.trinity.sample.editor.*
-import com.trinity.sample.entity.EffectInfo
+import com.trinity.sample.entity.*
 import com.trinity.sample.entity.Filter
-import com.trinity.sample.entity.MediaItem
+import com.trinity.sample.fragment.MusicFragment
 import com.trinity.sample.listener.OnEffectTouchListener
 import com.trinity.sample.view.*
-import com.trinity.sample.view.ThumbLineBar
-import kotlinx.coroutines.GlobalScope
-import kotlinx.coroutines.async
 import org.json.JSONObject
-import java.io.File
-import java.io.FileOutputStream
-import java.nio.ByteBuffer
-import java.nio.charset.Charset
+import java.util.*
 
 /**
  * Create by wlanjie on 2019/4/13-下午3:14
  */
-class EditorActivity : AppCompatActivity(), ViewOperator.AnimatorListener, TabLayout.BaseOnTabSelectedListener<TabLayout.Tab>, ThumbLineBar.OnBarSeekListener, PlayerListener, OnEffectTouchListener {
+class EditorActivity : AppCompatActivity(), ViewOperator.AnimatorListener, TabLayout.BaseOnTabSelectedListener<TabLayout.Tab>, ThumbLineBar.OnBarSeekListener, PlayerListener, OnEffectTouchListener, OnRenderListener {
   companion object {
+    private const val MUSIC_TAG = "music"
     private const val USE_ANIMATION_REMAIN_TIME = 300 * 1000
   }
 
@@ -55,28 +47,31 @@ class EditorActivity : AppCompatActivity(), ViewOperator.AnimatorListener, TabLa
   private lateinit var mViewOperator: ViewOperator
   private lateinit var mActionBar: RelativeLayout
   private lateinit var mThumbLineBar: OverlayThumbLineBar
-  private lateinit var mVideoEditor: VideoEditor
+  private lateinit var mInsideBottomSheet: FrameLayout
+  private lateinit var mBottomSheetLayout: CoordinatorLayout
+  private lateinit var mVideoEditor: TrinityVideoEditor
   private var mLutFilter: LutFilterChooser ?= null
   private var mEffect: EffectChooser ?= null
+  private var mSubtitleChooser: SubtitleChooser ?= null
   private var mUseInvert = false
   private var mCanAddAnimation = true
   private var mThumbLineOverlayView: ThumbLineOverlay.ThumbLineOverlayView ?= null
-  private var mThumbnailFetcher: ThumbnailFetcher ?= null
   private lateinit var mEffectController: EffectController
+//  private val mEffects = LinkedHashMap<String, EffectInfo>()
+  private val mEffects =  LinkedList<EffectInfo>()
   private var mStartTime: Long = 0
+  private val mActionIds = mutableMapOf<String, Int>()
   private var mFilterId = -1
-  private var mFlashWhiteId = -1
-  private var mSplitScreenTwoId = -1
-  private var mSplitScreenThreeId = -1
-  private var mSplitScreenFourId = -1
-  private var mSplitScreenSixId = -1
-  private var mSplitScreenNineId = -1
+  private var mMusicId = -1
+  private var mVideoDuration = 0L
+  private var mCurrentEditEffect: PasteUISimpleImpl ?= null
+  private val mPasteManager = PasteManagerImpl()
 
   @SuppressLint("ClickableViewAccessibility")
   override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
     setContentView(R.layout.activity_editor)
-    mVideoEditor = VideoEditor(this)
+    mVideoEditor = TrinityCore.createEditor(this)
 //    openLog()
 
     mEffectController = EffectController(this, mVideoEditor)
@@ -92,11 +87,12 @@ class EditorActivity : AppCompatActivity(), ViewOperator.AnimatorListener, TabLa
     mActionBar = findViewById(R.id.action_bar)
     mActionBar.setBackgroundDrawable(null)
     mThumbLineBar = findViewById(R.id.thumb_line_bar)
-    initThumbLineBar()
 
     val rootView = findViewById<RelativeLayout>(R.id.root_view)
     mViewOperator = ViewOperator(rootView, mActionBar, mSurfaceView, mTabLayout, mPasterContainer, mPlayImage)
     mViewOperator.setAnimatorListener(this)
+    mInsideBottomSheet = findViewById(R.id.frame_container)
+    mBottomSheetLayout = findViewById(R.id.editor_coordinator)
 
     mPlayImage.setOnClickListener { mVideoEditor.resume() }
     mPauseImage.setOnClickListener { mVideoEditor.pause() }
@@ -105,52 +101,38 @@ class EditorActivity : AppCompatActivity(), ViewOperator.AnimatorListener, TabLa
     }
 
     mVideoEditor.setSurfaceView(mSurfaceView)
-    val medias = intent.getSerializableExtra("medias") as Array<MediaItem>
+    mVideoEditor.setOnRenderListener(this)
+    val mediasArrays = intent.getSerializableExtra("medias") as Array<*>
 //    val clip = MediaClip(file.absolutePath, TimeRange(0, 10000))
 //    mVideoEditor.insertClip(clip)
-    medias.forEach {
-      val clip = MediaClip(it.path, TimeRange(0, it.duration.toLong()))
+
+    val medias = mutableListOf<MediaItem>()
+    mediasArrays.forEach {
+      val media = it as MediaItem
+      val clip = MediaClip(media.path, TimeRange(0, media.duration.toLong()))
       mVideoEditor.insertClip(clip)
+      mVideoDuration += media.duration
+      medias.add(media)
     }
     val result = mVideoEditor.play(true)
     if (result != 0) {
       Toast.makeText(this, "播放失败: $result", Toast.LENGTH_SHORT).show()
     }
 
+    initThumbLineBar(medias)
     findViewById<View>(R.id.next)
         .setOnClickListener {
           startActivity(Intent(this, VideoExportActivity::class.java))
         }
   }
 
-  private fun initThumbLineBar() {
+  private fun initThumbLineBar(medias: MutableList<MediaItem>) {
+    if (medias.isEmpty()) {
+      return
+    }
     val thumbnailSize = TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, 32f, resources.displayMetrics).toInt()
     val thumbnailPoint = Point(thumbnailSize, thumbnailSize)
-
-    if (mThumbnailFetcher == null) {
-      mThumbnailFetcher = object: ThumbnailFetcher {
-        override fun addVideoSource(path: String) {
-        }
-
-        override fun requestThumbnailImage(times: LongArray, l: ThumbnailFetcher.OnThumbnailCompletionListener) {
-          val bitmap = BitmapFactory.decodeResource(resources, R.drawable.ic_launcher)
-          l.onThumbnail(bitmap, 0)
-        }
-
-        override fun getTotalDuration(): Long {
-          return 10000
-        }
-
-        override fun release() {
-        }
-      }
-    } else {
-      mThumbnailFetcher?.release()
-      mThumbnailFetcher?.addVideoSource("/sdcard/test.mp4")
-    }
-
     val config = ThumbLineConfig.Builder()
-        .thumbnailFetcher(mThumbnailFetcher)
         .screenWidth(windowManager.defaultDisplay.width)
         .thumbPoint(thumbnailPoint)
         .thumbnailCount(10)
@@ -158,17 +140,24 @@ class EditorActivity : AppCompatActivity(), ViewOperator.AnimatorListener, TabLa
     mThumbLineOverlayView = object: ThumbLineOverlay.ThumbLineOverlayView {
       val rootView = LayoutInflater.from(applicationContext).inflate(R.layout.timeline_overlay, null)
 
-      override val container: ViewGroup
-        get() = rootView as ViewGroup
-      override val headView: View
-        get() = rootView.findViewById(R.id.head_view)
-      override val tailView: View
-        get() = rootView.findViewById(R.id.tail_view)
-      override val middleView: View
-        get() = rootView.findViewById(R.id.middle_view)
+      override fun getContainer(): ViewGroup {
+        return rootView as ViewGroup
+      }
+
+      override fun getHeadView(): View {
+        return rootView.findViewById(R.id.head_view)
+      }
+
+      override fun getTailView(): View {
+        return rootView.findViewById(R.id.tail_view)
+      }
+
+      override fun getMiddleView(): View {
+        return rootView.findViewById(R.id.middle_view)
+      }
 
     }
-    mThumbLineBar.setup(config, this, this)
+    mThumbLineBar.setup(medias, config, this, this)
     mEffectController.setThumbLineBar(mThumbLineBar)
   }
 
@@ -185,6 +174,7 @@ class EditorActivity : AppCompatActivity(), ViewOperator.AnimatorListener, TabLa
     } else {
       mVideoEditor.getVideoDuration() - duration < USE_ANIMATION_REMAIN_TIME
     }
+    mVideoEditor.seek(duration.toInt())
   }
 
   override fun onThumbLineBarSeekFinish(duration: Long) {
@@ -203,7 +193,7 @@ class EditorActivity : AppCompatActivity(), ViewOperator.AnimatorListener, TabLa
   }
 
   override fun getDuration(): Long {
-    return 10000
+    return mVideoEditor.getVideoDuration()
   }
 
   override fun updateDuration(duration: Long) {
@@ -225,8 +215,8 @@ class EditorActivity : AppCompatActivity(), ViewOperator.AnimatorListener, TabLa
         .setIcon(R.mipmap.ic_gif), false)
     mTabLayout.addTab(mTabLayout.newTab().setText(R.string.subtitle)
         .setIcon(R.mipmap.ic_subtitle), false)
-    mTabLayout.addTab(mTabLayout.newTab().setText(R.string.transition)
-        .setIcon(R.mipmap.ic_transition), false)
+//    mTabLayout.addTab(mTabLayout.newTab().setText(R.string.transition)
+//        .setIcon(R.mipmap.ic_transition), false)
     mTabLayout.addTab(mTabLayout.newTab().setText(R.string.paint)
         .setIcon(R.mipmap.ic_paint), false)
     mTabLayout.addTab(mTabLayout.newTab().setText(R.string.cover)
@@ -235,15 +225,12 @@ class EditorActivity : AppCompatActivity(), ViewOperator.AnimatorListener, TabLa
   }
 
   override fun onTabReselected(tab: TabLayout.Tab) {
-    println("onTabReselected")
   }
 
   override fun onTabUnselected(tab: TabLayout.Tab) {
-    println("onTabUnselected")
   }
 
   override fun onTabSelected(tab: TabLayout.Tab) {
-    println("onTabSelected")
     when (tab.text) {
       getString(R.string.filter) -> {
         setActiveIndex(EditorPage.FILTER)
@@ -251,10 +238,18 @@ class EditorActivity : AppCompatActivity(), ViewOperator.AnimatorListener, TabLa
       getString(R.string.effect) -> {
         setActiveIndex(EditorPage.FILTER_EFFECT)
       }
+      getString(R.string.music) -> {
+        setActiveIndex(EditorPage.AUDIO_MIX)
+      }
+      getString(R.string.subtitle) -> {
+        setActiveIndex(EditorPage.SUBTITLE)
+      }
     }
   }
 
   private fun setActiveIndex(page: EditorPage) {
+    val fragmentManager = supportFragmentManager
+    mBottomSheetLayout.visibility = View.GONE
     when (page) {
       EditorPage.FILTER -> {
         if (mLutFilter == null) {
@@ -268,6 +263,7 @@ class EditorActivity : AppCompatActivity(), ViewOperator.AnimatorListener, TabLa
         }
       }
       EditorPage.FILTER_EFFECT -> {
+        mVideoEditor.pause()
         if (mEffect == null) {
           mEffect = EffectChooser(this)
           mEffect?.setOnEffectTouchListener(this)
@@ -277,105 +273,83 @@ class EditorActivity : AppCompatActivity(), ViewOperator.AnimatorListener, TabLa
           mViewOperator.showBottomView(it)
         }
       }
+      EditorPage.SUBTITLE -> {
+        mVideoEditor.pause()
+        if (mSubtitleChooser == null) {
+          mSubtitleChooser = SubtitleChooser(this)
+        }
+        mSubtitleChooser?.addThumbView(mThumbLineBar)
+        mSubtitleChooser?.setOnSubtitleItemClickListener(object: SubtitleChooser.OnSubtitleItemClickListener {
+          override fun onSubtitleItemClick(info: SubtitleInfo) {
+            val cationView = View.inflate(this@EditorActivity, R.layout.paste_text, null) as PasteWithTextView
+            mPasterContainer.addView(cationView, ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
+
+            val controller = mPasteManager.addSubtitle("", "")
+            controller.setPasteStartTime(getCurrentDuration())
+
+            val pasteText = PasteUITextImpl(cationView, controller, mThumbLineBar, false)
+            if (mCurrentEditEffect?.isEditCompleted() == false) {
+              mCurrentEditEffect?.removePaste()
+            }
+            mCurrentEditEffect = pasteText
+            pasteText.showTimeEdit()
+            pasteText.showTextEdit(false)
+          }
+        })
+        mSubtitleChooser?.let {
+          mViewOperator.showBottomView(it)
+        }
+      }
+      EditorPage.AUDIO_MIX -> {
+        showMusic()
+      }
+      else -> {}
     }
   }
 
-  override fun onEffectTouchEvent(event: Int, effectName: String) {
+  override fun onEffectTouchEvent(event: Int, effect: Effect) {
+    val effectLocalDir = externalCacheDir?.absolutePath
+
     if (event == MotionEvent.ACTION_DOWN) {
       mStartTime = mVideoEditor.getCurrentPosition()
       mVideoEditor.resume()
-      val jsonObject = JSONObject()
-      jsonObject.put("startTime", mStartTime)
-      jsonObject.put("endTime", Long.MAX_VALUE)
-      if ("闪白" == effectName) {
-        /**
-         *  {
-         *   "effectType": 0,
-         *   "startTime": 0,
-         *   "endTime": 10000
-         *  }
-         */
-        jsonObject.put("effectType", EffectType.FlashWhite.name)
-        mFlashWhiteId = mVideoEditor.addAction(jsonObject.toString())
-//        mFlashWhiteId = mVideoEditor.addAction(EffectType.FLASH_WHITE, 0, Long.MAX_VALUE)
-      } else if ("两屏" == effectName) {
-        /**
-         *  {
-         *   "effectType": 0,
-         *   "startTime": 0,
-         *   "endTime": 10000,
-         *   "splitScreenCount": 2
-         *  }
-         */
-        jsonObject.put("splitScreenCount", 2)
-        jsonObject.put("effectType", EffectType.SplitScreen.name)
-        mSplitScreenTwoId = mVideoEditor.addAction(jsonObject.toString())
-      } else if ("三屏" == effectName) {
-        /**
-         *  {
-         *   "effectType": 0,
-         *   "startTime": 0,
-         *   "endTime": 10000,
-         *   "splitScreenCount": 3
-         *  }
-         */
-        jsonObject.put("splitScreenCount", 3)
-        jsonObject.put("effectType", EffectType.SplitScreen.name)
-        mSplitScreenThreeId = mVideoEditor.addAction(jsonObject.toString())
-      } else if ("四屏" == effectName) {
-        jsonObject.put("splitScreenCount", 4)
-        jsonObject.put("effectType", EffectType.SplitScreen.name)
-        mSplitScreenFourId = mVideoEditor.addAction(jsonObject.toString())
-      } else if ("六屏" == effectName) {
-        jsonObject.put("splitScreenCount", 6)
-        jsonObject.put("effectType", EffectType.SplitScreen.name)
-        mSplitScreenSixId = mVideoEditor.addAction(jsonObject.toString())
-      } else if ("九屏" == effectName) {
-        jsonObject.put("splitScreenCount", 9)
-        jsonObject.put("effectType", EffectType.SplitScreen.name)
-        mSplitScreenNineId = mVideoEditor.addAction(jsonObject.toString())
+      if (effect.id == EffectId.UNDO.ordinal) {
+        return
+      } else {
+        val actionId = mVideoEditor.addAction(effectLocalDir + "/" + effect.effect)
+        mActionIds[effect.name] = actionId
       }
-      mEffectController.onEventAnimationFilterLongClick(EffectInfo())
+      effect.startTime = mStartTime.toInt()
+      mEffectController.onEventAnimationFilterLongClick(effect)
     } else if (event == MotionEvent.ACTION_UP) {
       mVideoEditor.pause()
-      val jsonObject = JSONObject()
-      if ("闪白" == effectName) {
-        jsonObject.put("effectType", EffectType.FlashWhite.name)
-        jsonObject.put("startTime", mStartTime)
-        jsonObject.put("endTime", mVideoEditor.getCurrentPosition())
-        mVideoEditor.updateAction(jsonObject.toString(), mFlashWhiteId)
-      } else if ("两屏" == effectName) {
-        jsonObject.put("effectType", EffectType.SplitScreen.name)
-        jsonObject.put("startTime", mStartTime)
-        jsonObject.put("endTime", mVideoEditor.getCurrentPosition())
-        jsonObject.put("splitScreenCount", 2)
-        mVideoEditor.updateAction(jsonObject.toString(), mSplitScreenTwoId)
-      } else if ("三屏" == effectName) {
-        jsonObject.put("effectType", EffectType.SplitScreen.name)
-        jsonObject.put("startTime", mStartTime)
-        jsonObject.put("endTime", mVideoEditor.getCurrentPosition())
-        jsonObject.put("splitScreenCount", 3)
-        mVideoEditor.updateAction(jsonObject.toString(), mSplitScreenThreeId)
-      } else if ("四屏" == effectName) {
-        jsonObject.put("effectType", EffectType.SplitScreen.name)
-        jsonObject.put("startTime", mStartTime)
-        jsonObject.put("endTime", mVideoEditor.getCurrentPosition())
-        jsonObject.put("splitScreenCount", 4)
-        mVideoEditor.updateAction(jsonObject.toString(), mSplitScreenFourId)
-      } else if ("六屏" == effectName) {
-        jsonObject.put("effectType", EffectType.SplitScreen.name)
-        jsonObject.put("startTime", mStartTime)
-        jsonObject.put("endTime", mVideoEditor.getCurrentPosition())
-        jsonObject.put("splitScreenCount", 6)
-        mVideoEditor.updateAction(jsonObject.toString(), mSplitScreenSixId)
-      } else if ("九屏" == effectName) {
-        jsonObject.put("effectType", EffectType.SplitScreen.name)
-        jsonObject.put("startTime", mStartTime)
-        jsonObject.put("endTime", mVideoEditor.getCurrentPosition())
-        jsonObject.put("splitScreenCount", 9)
-        mVideoEditor.updateAction(jsonObject.toString(), mSplitScreenNineId)
+      if (effect.id == EffectId.UNDO.ordinal) {
+        if (!mEffects.isEmpty()) {
+          val info = mEffects.removeLast()
+          mEffectController.onEventAnimationFilterDelete(Effect(0, "", "", ""))
+          mVideoEditor.deleteAction(info.actionId)
+          mVideoEditor.seek(info.startTime.toInt())
+        }
+        return
+      } else {
+        val endTime = mVideoEditor.getCurrentPosition()
+        val effectInfo = EffectInfo()
+        val actionId = mActionIds[effect.name] ?: return
+        effectInfo.actionId = actionId
+        effectInfo.startTime = mStartTime
+        effectInfo.endTime = endTime
+        mEffects.add(effectInfo)
+
+        // 删除同一时间的特效,保留当前的
+        mEffects.forEach {
+          if (mStartTime >= it.startTime && endTime <= it.endTime && actionId != it.actionId) {
+            mVideoEditor.deleteAction(it.actionId)
+          }
+        }
+
+        mVideoEditor.updateAction(mStartTime.toInt(), endTime.toInt(), actionId)
+        mEffectController.onEventAnimationFilterClickUp(effect)
       }
-      mEffectController.onEventAnimationFilterClickUp(EffectInfo())
     }
   }
 
@@ -386,38 +360,51 @@ class EditorActivity : AppCompatActivity(), ViewOperator.AnimatorListener, TabLa
   }
 
   override fun onShowAnimationEnd() {
-    mVideoEditor.pause()
+//    mVideoEditor.pause()
   }
 
   override fun onHideAnimationEnd() {
     mVideoEditor.resume()
   }
 
+  fun setMusic(path: String) {
+    val jsonObject = JSONObject()
+    jsonObject.put("path", path)
+    if (mMusicId != -1) {
+      mVideoEditor.updateMusic(jsonObject.toString(), mMusicId)
+    } else {
+      mVideoEditor.addMusic(jsonObject.toString())
+    }
+    closeBottomSheet()
+  }
+
+  fun closeBottomSheet() {
+    val behavior = BottomSheetBehavior.from(mInsideBottomSheet)
+    behavior.state = BottomSheetBehavior.STATE_HIDDEN
+  }
+
   private fun showMusic() {
-    val dialog = BottomSheetDialog(this)
-    val view = LayoutInflater.from(this).inflate(R.layout.bottom_sheet_filter, null)
-    val recyclerView = view as RecyclerView
-    recyclerView.layoutManager = LinearLayoutManager(this, RecyclerView.VERTICAL, false)
-    recyclerView.addItemDecoration(DividerItemDecoration(this, DividerItemDecoration.VERTICAL))
-    recyclerView.adapter = MusicAdapter(this) {}
-    dialog.setContentView(view)
-    dialog.setCancelable(true)
-    dialog.setCanceledOnTouchOutside(true)
-    dialog.show()
+    mBottomSheetLayout.visibility = View.VISIBLE
+    var musicFragment = supportFragmentManager.findFragmentByTag(MUSIC_TAG)
+    if (musicFragment == null) {
+      musicFragment = MusicFragment.newInstance()
+      supportFragmentManager.transaction {
+        replace(R.id.frame_container, musicFragment, MUSIC_TAG)
+      }
+    }
+    val behavior = BottomSheetBehavior.from(mInsideBottomSheet)
+    if (behavior.state != BottomSheetBehavior.STATE_EXPANDED) {
+      behavior.state = BottomSheetBehavior.STATE_EXPANDED
+    } else {
+      behavior.state = BottomSheetBehavior.STATE_HIDDEN
+    }
   }
 
   private fun setFilter(filter: Filter) {
-    val jsonObject = JSONObject()
-    jsonObject.put("effectType", EffectType.Filter.name)
-    jsonObject.put("startTime", 0)
-    jsonObject.put("endTime", Int.MAX_VALUE)
-    jsonObject.put("lut", externalCacheDir?.absolutePath + "/filter/${filter.lut}")
-    jsonObject.put("intensity", 1.0f)
-    if (mFilterId == -1) {
-      mFilterId = mVideoEditor.addAction(jsonObject.toString())
-    } else {
-      mVideoEditor.updateAction(jsonObject.toString(), mFilterId)
+    if (mFilterId != -1) {
+      mVideoEditor.deleteFilter(mFilterId)
     }
+    mFilterId = mVideoEditor.addFilter(externalCacheDir?.absolutePath + "/filter/${filter.config}")
   }
 
   override fun onPause() {
@@ -433,6 +420,16 @@ class EditorActivity : AppCompatActivity(), ViewOperator.AnimatorListener, TabLa
 
   override fun onDestroy() {
     super.onDestroy()
+    if (mFilterId != -1) {
+      mVideoEditor.deleteFilter(mFilterId)
+    }
+    if (mMusicId != -1) {
+      mVideoEditor.deleteMusic(mMusicId)
+    }
+    mActionIds.forEach {
+      mVideoEditor.deleteAction(it.value)
+    }
+    mActionIds.clear()
     mVideoEditor.destroy()
 //    closeLog()
   }
@@ -450,9 +447,100 @@ class EditorActivity : AppCompatActivity(), ViewOperator.AnimatorListener, TabLa
 
   private val mOnGestureListener = object: SimpleOnGestureListener() {
 
-    override fun onSingleTapConfirmed(e: MotionEvent?): Boolean {
-      return super.onSingleTapConfirmed(e)
+    private var mPosX = 0F
+    private var mPosY = 0F
+    private var mShouldDrag = false
+
+    fun shouldDrag(): Boolean {
+      return mShouldDrag
     }
+
+    override fun onSingleTapConfirmed(e: MotionEvent): Boolean {
+      if (!mShouldDrag) {
+        var outSide = true
+        val bottomView = mViewOperator.getBottomView()
+        bottomView?.let {
+          val count = mPasterContainer.childCount
+          for (i in 0 until count) {
+            val view = mPasterContainer.getChildAt(i)
+            val simpleImpl = view?.tag as PasteUISimpleImpl?
+            if (simpleImpl != null && bottomView.isHostPaste(simpleImpl)) {
+              if (simpleImpl.isVisibleInTime(getCurrentDuration()) && simpleImpl.contentContains(e.x, e.y)) {
+                outSide = false
+                if (mCurrentEditEffect != null && mCurrentEditEffect != simpleImpl && mCurrentEditEffect?.isEditCompleted() == false) {
+                  mCurrentEditEffect?.editTimeCompleted()
+                }
+                mCurrentEditEffect = simpleImpl
+                if (simpleImpl.isEditCompleted()) {
+                  mVideoEditor.resume()
+                  simpleImpl.editorTimeStart()
+                }
+                break
+              } else {
+                if (mCurrentEditEffect != simpleImpl && simpleImpl.isVisibleInTime(getCurrentDuration())) {
+                  simpleImpl.editTimeCompleted()
+                }
+              }
+            }
+          }
+        }
+        if (outSide) {
+          if (mCurrentEditEffect != null && mCurrentEditEffect?.isEditCompleted() == false) {
+            mCurrentEditEffect?.editTimeCompleted()
+          }
+          mViewOperator.hideBottomEditorView(EditorPage.FONT)
+        }
+      } else {
+        mVideoEditor.pause()
+        mCurrentEditEffect?.showTextEdit(false)
+      }
+      return mShouldDrag
+    }
+
+    override fun onScroll(e1: MotionEvent, e2: MotionEvent, distanceX: Float, distanceY: Float): Boolean {
+      if (shouldDrag()) {
+        if (mPosX == 0F || mPosY == 0F) {
+          mPosX = e1.x
+          mPosY = e1.y
+        }
+        val x = e2.x
+        val y = e2.y
+        mCurrentEditEffect?.moveContent(x - mPosX, y - mPosY)
+        mPosX = x
+        mPosY = y
+      }
+      return mShouldDrag
+    }
+
+    override fun onFling(e1: MotionEvent?, e2: MotionEvent?, velocityX: Float, velocityY: Float): Boolean {
+      return mShouldDrag
+    }
+
+    override fun onDown(e: MotionEvent): Boolean {
+      if (mCurrentEditEffect?.isPasteRemoved() == true) {
+        mCurrentEditEffect = null
+      }
+      mShouldDrag = if (mCurrentEditEffect != null) {
+        mCurrentEditEffect?.isEditCompleted() == false &&
+            mCurrentEditEffect?.contentContains(e.x, e.y) ?: false &&
+            mCurrentEditEffect?.isVisibleInTime(getCurrentDuration()) ?: false
+      } else {
+        false
+      }
+      mPosX = 0F
+      mPosY = 0F
+      return mShouldDrag
+    }
+  }
+
+  override fun onSurfaceCreated() {
+  }
+
+  override fun onDrawFrame(textureId: Int, width: Int, height: Int, matrix: FloatArray?): Int {
+    return -1
+  }
+
+  override fun onSurfaceDestroy() {
   }
 
 }

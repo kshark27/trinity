@@ -27,6 +27,13 @@
 
 namespace trinity {
 
+typedef enum {
+    kStartEncoder = 200,
+    kEncodeFrame,
+    kEndOfStream,
+    kDestroyEncoder,
+} EncoderMessage;
+
 class VideoEncoderAdapter {
  public:
     VideoEncoderAdapter();
@@ -34,9 +41,9 @@ class VideoEncoderAdapter {
 
     virtual void Init(int width, int height, int video_bit_rate, int frame_rate);
 
-    virtual void CreateEncoder(EGLCore* core, int texture_id) = 0;
+    virtual int CreateEncoder(EGLCore* core) = 0;
 
-    virtual void Encode(int timeMills = -1) = 0;
+    virtual void Encode(int64_t time, int texture_id = 0) = 0;
 
     virtual void DestroyEncoder() = 0;
 

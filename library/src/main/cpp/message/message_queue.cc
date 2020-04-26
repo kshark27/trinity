@@ -26,21 +26,34 @@
 
 namespace trinity {
 
-MessageQueue::MessageQueue(): queue_name_("") {
+MessageQueue::MessageQueue()
+    : queue_name_("")
+    , first_(nullptr)
+    , last_(nullptr)
+    , packet_size_(0)
+    , abort_request_(false)
+    , lock_()
+    , condition_() {
     Init();
 }
 
-MessageQueue::MessageQueue(const char* queueNameParam) {
+MessageQueue::MessageQueue(const char* queueNameParam)
+    : queue_name_(queueNameParam)
+    , first_(nullptr)
+    , last_(nullptr)
+    , packet_size_(0)
+    , abort_request_(false)
+    , lock_()
+    , condition_() {
     Init();
-    queue_name_ = queueNameParam;
 }
 
 void MessageQueue::Init() {
-    pthread_mutex_init(&lock_, NULL);
-    pthread_cond_init(&condition_, NULL);
+    pthread_mutex_init(&lock_, nullptr);
+    pthread_cond_init(&condition_, nullptr);
     packet_size_ = 0;
-    first_ = NULL;
-    last_ = NULL;
+    first_ = nullptr;
+    last_ = nullptr;
     abort_request_ = false;
 }
 
@@ -61,35 +74,31 @@ int MessageQueue::Size() {
 void MessageQueue::Flush() {
     LOGI("\n %s Flush .... and this time the queue_ Size is %d \n", queue_name_, Size());
     MessageNode *curNode, *nextNode;
-    Message *msg;
     pthread_mutex_lock(&lock_);
-    for (curNode = first_; curNode != NULL; curNode = nextNode) {
+    for (curNode = first_; curNode != nullptr; curNode = nextNode) {
         nextNode = curNode->next;
-        msg = curNode->msg;
-        if (NULL != msg) {
+        auto* msg = curNode->msg;
+        if (nullptr != msg) {
             delete msg;
         }
         delete curNode;
-        curNode = NULL;
+        curNode = nullptr;
     }
-    last_ = NULL;
-    first_ = NULL;
+    last_ = nullptr;
+    first_ = nullptr;
     packet_size_ = 0;
     pthread_mutex_unlock(&lock_);
 }
 
 int MessageQueue::EnqueueMessage(Message *msg) {
     if (abort_request_) {
-        delete msg;
         return -1;
     }
-    MessageNode *node = new MessageNode();
-    if (!node)
-        return -1;
+    auto *node = new MessageNode();
     node->msg = msg;
-    node->next = NULL;
+    node->next = nullptr;
     pthread_mutex_lock(&lock_);
-    if (last_ == NULL) {
+    if (last_ == nullptr) {
         first_ = node;
     } else {
         last_->next = node;
@@ -115,11 +124,10 @@ int MessageQueue::DequeueMessage(Message **msg, bool block) {
         if (node) {
             first_ = node->next;
             if (!first_)
-                last_ = NULL;
+                last_ = nullptr;
             packet_size_--;
             *msg = node->msg;
             delete node;
-            node = NULL;
             ret = 1;
             break;
         } else if (!block) {
@@ -142,45 +150,15 @@ void MessageQueue::Abort() {
 
 
 Message::Message() {
-    handler_ = NULL;
+    handler_ = nullptr;
     what = -1;
     arg1 = -1;
     arg2 = -1;
+    arg3 = -1;
     obj = nullptr;
 }
 
-Message::Message(int what) {
-    handler_ = NULL;
-    this->what = what;
-    arg1 = -1;
-    arg2 = -1;
-    obj = nullptr;
-}
-
-Message::Message(int what, int arg1, int arg2) {
-    handler_ = NULL;
-    this->what = what;
-    this->arg1 = arg1;
-    this->arg2 = arg2;
-    obj = nullptr;
-}
-
-Message::Message(int what, void* obj) {
-    handler_ = NULL;
-    this->what = what;
-    arg1 = -1;
-    arg2 = -1;
-    this->obj = obj;
-}
-Message::Message(int what, int arg1, int arg2, void* obj) {
-    handler_ = NULL;
-    this->what = what;
-    this->arg1 = arg1;
-    this->arg2 = arg2;
-    this->obj = obj;
-}
-Message::~Message() {
-}
+Message::~Message() = default;
 
 int Message::Execute() {
     if (MESSAGE_QUEUE_LOOP_QUIT_FLAG == what) {

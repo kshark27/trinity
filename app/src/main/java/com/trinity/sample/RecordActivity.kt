@@ -6,6 +6,7 @@ import android.content.Intent
 import android.content.SharedPreferences
 import android.graphics.PointF
 import android.os.Bundle
+import android.util.TypedValue
 import android.view.View
 import android.widget.FrameLayout
 import android.widget.ImageView
@@ -13,30 +14,32 @@ import android.widget.RadioGroup
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
-import androidx.fragment.app.transaction
+import androidx.fragment.app.commit
 import androidx.preference.PreferenceManager
 import com.github.florent37.runtimepermission.kotlin.askPermission
 import com.google.android.material.bottomsheet.BottomSheetBehavior
+import com.tencent.mars.xlog.Log
 import com.trinity.OnRecordingListener
 import com.trinity.camera.CameraCallback
+import com.trinity.camera.Facing
 import com.trinity.camera.Flash
 import com.trinity.camera.TrinityPreviewView
 import com.trinity.core.Frame
 import com.trinity.core.MusicInfo
+import com.trinity.face.MnnFaceDetection
 import com.trinity.listener.OnRenderListener
 import com.trinity.record.PreviewResolution
 import com.trinity.record.Speed
 import com.trinity.record.TrinityRecord
+import com.trinity.sample.entity.Effect
+import com.trinity.sample.entity.Filter
 import com.trinity.sample.entity.MediaItem
-import com.trinity.sample.fragment.MediaFragment
-import com.trinity.sample.fragment.MusicFragment
-import com.trinity.sample.fragment.SettingFragment
+import com.trinity.sample.fragment.*
 import com.trinity.sample.view.LineProgressView
 import com.trinity.sample.view.RecordButton
 import com.trinity.sample.view.foucs.AutoFocusTrigger
 import com.trinity.sample.view.foucs.DefaultAutoFocusMarker
 import com.trinity.sample.view.foucs.MarkerLayout
-import java.io.File
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -50,6 +53,9 @@ class RecordActivity : AppCompatActivity(), OnRecordingListener, OnRenderListene
     private const val SETTING_TAG = "setting_tag"
     private const val MUSIC_TAG = "music_tag"
     private const val MEDIA_TAG = "media_tag"
+    private const val FILTER_TAG = "filter_tag"
+    private const val BEAUTY_TAG = "beauty_tag"
+    private const val EFFECT_TAG = "effect_tag"
   }
 
   private lateinit var mRecord: TrinityRecord
@@ -63,6 +69,7 @@ class RecordActivity : AppCompatActivity(), OnRecordingListener, OnRenderListene
   private var mFlashIndex = 0
   private val mMedias = mutableListOf<MediaItem>()
   private val mRecordDurations = mutableListOf<Int>()
+  private var mCurrentRecordProgress = 0
   private var mCurrentRecordDuration = 0
   private var mHardwareEncode = false
   private var mFrame = Frame.FIT
@@ -75,6 +82,10 @@ class RecordActivity : AppCompatActivity(), OnRecordingListener, OnRenderListene
   private var mRecordDuration = 60 * 1000
   private var mAutoFocusMarker = DefaultAutoFocusMarker()
   private var mPermissionDenied = false
+  private var mSpeed = Speed.NORMAL
+  private var mFilterId = -1
+  private var mBeautyId = -1
+  private var mIdentifyId = -1
 
   @SuppressLint("ClickableViewAccessibility")
   override fun onCreate(savedInstanceState: Bundle?) {
@@ -88,10 +99,13 @@ class RecordActivity : AppCompatActivity(), OnRecordingListener, OnRenderListene
     val preview = findViewById<TrinityPreviewView>(R.id.preview)
     mLineView = findViewById(R.id.line_view)
 
-    mRecord = TrinityRecord(preview)
+    mRecord = TrinityRecord(this, preview)
     mRecord.setOnRenderListener(this)
     mRecord.setOnRecordingListener(this)
     mRecord.setCameraCallback(this)
+    mRecord.setCameraFacing(Facing.FRONT)
+    val faceDetection = MnnFaceDetection()
+    mRecord.setFaceDetection(faceDetection)
     val recordButton = findViewById<RecordButton>(R.id.record_button)
     recordButton.setOnGestureListener(this)
     mSwitchCamera = findViewById(R.id.switch_camera)
@@ -105,6 +119,20 @@ class RecordActivity : AppCompatActivity(), OnRecordingListener, OnRenderListene
     findViewById<View>(R.id.music)
       .setOnClickListener {
         showMusic()
+      }
+
+    findViewById<View>(R.id.filter)
+        .setOnClickListener {
+          showFilter()
+        }
+
+    findViewById<View>(R.id.beauty)
+        .setOnClickListener {
+          showBeauty()
+        }
+    findViewById<View>(R.id.effect)
+      .setOnClickListener {
+        showEffect()
       }
 
     mInsideBottomSheet = findViewById(R.id.frame_container)
@@ -127,7 +155,8 @@ class RecordActivity : AppCompatActivity(), OnRecordingListener, OnRenderListene
         .setOnClickListener {
           showMedia()
         }
-    preview.setOnTouchListener { v, event ->
+    preview.setOnTouchListener { _, event ->
+//      closeBottomSheet()
       mRecord.focus(PointF(event.x, event.y))
       true
     }
@@ -146,6 +175,9 @@ class RecordActivity : AppCompatActivity(), OnRecordingListener, OnRenderListene
     }
   }
 
+  override fun dispatchOnPreviewCallback(data: ByteArray, width: Int, height: Int, orientation: Int) {
+  }
+
   private fun setFrame() {
     mRecord.setFrame(mFrame)
   }
@@ -159,19 +191,97 @@ class RecordActivity : AppCompatActivity(), OnRecordingListener, OnRenderListene
     }
     medias.forEach {
       mRecordDurations.add(it.duration)
-      mLineView.setDuration(it.duration)
+      mLineView.addProgress(it.duration * 1.0f / mRecordDuration)
       mMedias.add(it)
     }
-    mLineView.stop()
+  }
+
+  private fun showEffect() {
+    var effectFragment = supportFragmentManager.findFragmentByTag(EFFECT_TAG)
+    if (effectFragment == null) {
+      effectFragment = IdentifyFragment()
+      supportFragmentManager.commit {
+        replace(R.id.frame_container, effectFragment, EFFECT_TAG)
+      }
+    }
+    if (effectFragment is IdentifyFragment) {
+      effectFragment.setCallback(object: IdentifyFragment.Callback {
+        override fun onIdentifyClick(effect: Effect?) {
+          if (effect == null) {
+            mRecord.deleteAction(mIdentifyId)
+          } else {
+            val effectPath = effect.effect
+            mIdentifyId = mRecord.addAction(externalCacheDir?.absolutePath + "/" + effectPath)
+          }
+        }
+      })
+    }
+    val behavior = BottomSheetBehavior.from(mInsideBottomSheet)
+    if (behavior.state != BottomSheetBehavior.STATE_EXPANDED) {
+      behavior.state = BottomSheetBehavior.STATE_EXPANDED
+    } else {
+      behavior.state = BottomSheetBehavior.STATE_HIDDEN
+    }
+  }
+
+  private fun showBeauty() {
+    var beautyFragment = supportFragmentManager.findFragmentByTag(BEAUTY_TAG)
+    if (beautyFragment == null) {
+      beautyFragment = BeautyFragment()
+      supportFragmentManager.commit {
+        replace(R.id.frame_container, beautyFragment, BEAUTY_TAG)
+      }
+    }
+    if (beautyFragment is BeautyFragment) {
+      beautyFragment.setCallback(object: BeautyFragment.Callback {
+        override fun onBeautyParam(value: Int, position: Int) {
+          if (mBeautyId == -1) {
+            mBeautyId = mRecord.addAction(externalCacheDir?.absolutePath + "/effect/beauty")
+          } else {
+            mRecord.updateActionParam(mBeautyId, "smoother", "intensity", value * 1.0F / 100)
+          }
+        }
+      })
+    }
+    val behavior = BottomSheetBehavior.from(mInsideBottomSheet)
+    if (behavior.state != BottomSheetBehavior.STATE_EXPANDED) {
+      behavior.state = BottomSheetBehavior.STATE_EXPANDED
+    } else {
+      behavior.state = BottomSheetBehavior.STATE_HIDDEN
+    }
+  }
+
+  private fun showFilter() {
+    var filterFragment = supportFragmentManager.findFragmentByTag(FILTER_TAG)
+    if (filterFragment == null) {
+      filterFragment = FilterFragment()
+      supportFragmentManager.commit {
+        replace(R.id.frame_container, filterFragment, FILTER_TAG)
+      }
+    }
+    if (filterFragment is FilterFragment) {
+      filterFragment.setCallback(object: FilterFragment.Callback {
+        override fun onFilterSelect(filter: Filter) {
+          if (mFilterId != -1) {
+            mRecord.deleteFilter(mFilterId)
+          }
+          mFilterId = mRecord.addFilter(externalCacheDir?.absolutePath + "/filter/${filter.config}")
+        }
+
+      })
+    }
+    val behavior = BottomSheetBehavior.from(mInsideBottomSheet)
+    if (behavior.state != BottomSheetBehavior.STATE_EXPANDED) {
+      behavior.state = BottomSheetBehavior.STATE_EXPANDED
+    } else {
+      behavior.state = BottomSheetBehavior.STATE_HIDDEN
+    }
   }
 
   private fun showMedia() {
-    var mediaFragment = supportFragmentManager.findFragmentByTag(MEDIA_TAG)
-    if (mediaFragment == null) {
-      mediaFragment = MediaFragment()
-      supportFragmentManager.transaction {
+    val mediaFragment = MediaFragment()
+    supportFragmentManager.commit {
         replace(R.id.frame_container, mediaFragment, MEDIA_TAG)
-      }
     }
     val behavior = BottomSheetBehavior.from(mInsideBottomSheet)
     if (behavior.state != BottomSheetBehavior.STATE_EXPANDED) {
@@ -185,7 +295,7 @@ class RecordActivity : AppCompatActivity(), OnRecordingListener, OnRenderListene
     var musicFragment = supportFragmentManager.findFragmentByTag(MUSIC_TAG)
     if (musicFragment == null) {
       musicFragment = MusicFragment.newInstance()
-      supportFragmentManager.transaction {
+      supportFragmentManager.commit {
         replace(R.id.frame_container, musicFragment, MUSIC_TAG)
       }
     }
@@ -206,7 +316,7 @@ class RecordActivity : AppCompatActivity(), OnRecordingListener, OnRenderListene
     var settingFragment = supportFragmentManager.findFragmentByTag(SETTING_TAG)
     if (settingFragment == null) {
       settingFragment = SettingFragment.newInstance()
-      supportFragmentManager.transaction {
+      supportFragmentManager.commit {
         replace(R.id.frame_container, settingFragment, SETTING_TAG)
       }
     }
@@ -222,11 +332,26 @@ class RecordActivity : AppCompatActivity(), OnRecordingListener, OnRenderListene
     val group = findViewById<RadioGroup>(R.id.rate_bar)
     group.setOnCheckedChangeListener { _, checkedId ->
       when (checkedId) {
-        R.id.rate_quarter -> mRecord.setSpeed(Speed.VERY_SLOW)
-        R.id.rate_half -> mRecord.setSpeed(Speed.SLOW)
-        R.id.rate_origin -> mRecord.setSpeed(Speed.NORMAL)
-        R.id.rate_double -> mRecord.setSpeed(Speed.FAST)
-        R.id.rate_double_power2 -> mRecord.setSpeed(Speed.VERY_FAST)
+        R.id.rate_quarter -> {
+          mRecord.setSpeed(Speed.VERY_SLOW)
+          mSpeed = Speed.VERY_SLOW
+        }
+        R.id.rate_half -> {
+          mRecord.setSpeed(Speed.SLOW)
+          mSpeed = Speed.SLOW
+        }
+        R.id.rate_origin -> {
+          mRecord.setSpeed(Speed.NORMAL)
+          mSpeed = Speed.NORMAL
+        }
+        R.id.rate_double -> {
+          mRecord.setSpeed(Speed.FAST)
+          mSpeed = Speed.FAST
+        }
+        R.id.rate_double_power2 -> {
+          mRecord.setSpeed(Speed.VERY_FAST)
+          mSpeed = Speed.VERY_FAST
+        }
       }
     }
   }
@@ -248,16 +373,16 @@ class RecordActivity : AppCompatActivity(), OnRecordingListener, OnRenderListene
   private fun deleteFile(view: View) {
     view.setOnClickListener {
       if (mMedias.isNotEmpty()) {
-        val media = mMedias.removeAt(mMedias.size - 1)
-        val file = File(media.path)
-        if (file.exists()) {
-          file.delete()
-        }
-        mLineView.remove()
+        mMedias.removeAt(mMedias.size - 1)
+//        val file = File(media.path)
+//        if (file.exists()) {
+//          file.delete()
+//        }
+        mLineView.deleteProgress()
       }
-    }
-    if (mRecordDurations.isNotEmpty()) {
-      mRecordDurations.removeAt(mRecordDurations.size - 1)
+      if (mRecordDurations.isNotEmpty()) {
+        mRecordDurations.removeAt(mRecordDurations.size - 1)
+      }
     }
   }
 
@@ -266,6 +391,7 @@ class RecordActivity : AppCompatActivity(), OnRecordingListener, OnRenderListene
     mRecordDurations.forEach {
       duration += it
     }
+    Log.i("trinity", "duration: $duration size: ${mRecordDurations.size}")
     if (duration >= mRecordDuration) {
       Toast.makeText(this, "已达最大时长", Toast.LENGTH_LONG).show()
       return
@@ -296,24 +422,27 @@ class RecordActivity : AppCompatActivity(), OnRecordingListener, OnRenderListene
         height = 640
       }
     }
-    mRecord.startEncode(path, width, height,
+    mRecord.startRecording(path, width, height,
       mVideoBitRate, mFrameRate, mHardwareEncode,
       mSampleRate, mChannels, mAudioBitRate, mRecordDuration)
-    val media = MediaItem(path, "video", width, height, Int.MAX_VALUE)
+    val media = MediaItem(path, "video", width, height)
     mMedias.add(media)
   }
 
   override fun onUp() {
-    mRecord.stopEncode()
-    mRecordDurations.add(mCurrentRecordDuration)
+    mRecord.stopRecording()
+    mRecordDurations.add(mCurrentRecordProgress)
+    val item = mMedias[mMedias.size - 1]
+    item.duration = mCurrentRecordProgress
     runOnUiThread {
-      mLineView.stop()
+      mLineView.addProgress(mCurrentRecordProgress * 1.0F / mCurrentRecordDuration)
     }
   }
 
   fun setMusic(music: String) {
     val musicInfo = MusicInfo(music)
     mRecord.setBackgroundMusic(musicInfo)
+    closeBottomSheet()
   }
 
   override fun onClick() {
@@ -337,9 +466,10 @@ class RecordActivity : AppCompatActivity(), OnRecordingListener, OnRenderListene
 //  }
 
   override fun onRecording(currentTime: Int, duration: Int) {
-    mCurrentRecordDuration = currentTime
+    mCurrentRecordProgress = currentTime
+    mCurrentRecordDuration = duration
     runOnUiThread {
-      mLineView.setDuration(currentTime)
+      mLineView.setLoadingProgress(currentTime * 1.0f / duration)
     }
   }
 
@@ -361,36 +491,40 @@ class RecordActivity : AppCompatActivity(), OnRecordingListener, OnRenderListene
       mFrameRate = (preferences.getString("frame_rate", "25") ?: "25").toInt()
       mChannels = (preferences.getString("channels", "1") ?: "1").toInt()
       mSampleRate = (preferences.getString("sample_rate", "44100") ?: "44100").toInt()
-      mVideoBitRate = (preferences.getString("video_bit_rate", "18432000") ?: "18432000").toInt()
-      mAudioBitRate = (preferences.getString("audio_bit_rate", "128000") ?: "128000").toInt()
+      mVideoBitRate = (preferences.getString("video_bit_rate", "18432") ?: "18432").toInt()
+      mAudioBitRate = (preferences.getString("audio_bit_rate", "128") ?: "128").toInt()
       mRecordDuration = (preferences.getString("record_duration", "60000") ?: "60000").toInt()
     } catch (e: Exception) {
       e.printStackTrace()
     }
     setPreviewResolution(preferences.getString("preview_resolution", "720P"))
-    mLineView.setMaxDuration(mRecordDuration)
+//    mLineView.setMaxDuration(mRecordDuration)
   }
 
   override fun onPause() {
     super.onPause()
     mPermissionDenied = false
     mRecord.stopPreview()
+    println("onPause")
     PreferenceManager.getDefaultSharedPreferences(this).unregisterOnSharedPreferenceChangeListener(this)
   }
 
-//  override fun onDestroy() {
-//    super.onDestroy()
+  override fun onDestroy() {
+    super.onDestroy()
+    println("onDestroy")
 //    closeLog()
-//  }
-
-  override fun onSurfaceCreated() {
   }
 
-  override fun onDrawFrame(textureId: Int, width: Int, height: Int, matrix: FloatArray): Int {
+  override fun onSurfaceCreated() {
+    println("onSurfaceCreated")
+  }
+
+  override fun onDrawFrame(textureId: Int, width: Int, height: Int, matrix: FloatArray?): Int {
     return 0
   }
 
   override fun onSurfaceDestroy() {
+    println("onSurfaceDestroy")
   }
 
   override fun onSharedPreferenceChanged(sharedPreferences: SharedPreferences, key: String) {

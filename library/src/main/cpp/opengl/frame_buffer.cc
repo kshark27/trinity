@@ -25,14 +25,19 @@
 #include "android_xlog.h"
 #elif __APPLE__
 #pragma clang diagnostic ignored "-Wdeprecated-declarations"
-#define LOGI 
+#define LOGI // NOLINT
 #endif
 
 namespace trinity {
 
-FrameBuffer::FrameBuffer(int width, int height, const char *vertex, const char *fragment) : OpenGL(width, height, vertex, fragment) {
-    start_time_ = 0;
-    end_time_ = INT64_MAX;
+FrameBuffer::FrameBuffer(int width, int height, const char *vertex, const char *fragment)
+    : OpenGL(width, height, vertex, fragment)
+    , texture_id_(0)
+    , frameBuffer_id_(0)
+    , vertex_coordinate_(nullptr)
+    , texture_coordinate_(nullptr)
+    , start_time_(0)
+    , end_time_(INT32_MAX) {
     CompileFrameBuffer(width, height);
 }
 
@@ -59,36 +64,38 @@ void FrameBuffer::CompileFrameBuffer(int camera_width, int camera_height) {
 
     vertex_coordinate_ = new GLfloat[8];
     texture_coordinate_ = new GLfloat[8];
-    vertex_coordinate_[0] = -1.0f;
-    vertex_coordinate_[1] = -1.0f;
-    vertex_coordinate_[2] = 1.0f;
-    vertex_coordinate_[3] = -1.0f;
-    vertex_coordinate_[4] = -1.0f;
-    vertex_coordinate_[5] = 1.0f;
-    vertex_coordinate_[6] = 1.0f;
-    vertex_coordinate_[7] = 1.0f;
+    vertex_coordinate_[0] = -1.0F;
+    vertex_coordinate_[1] = -1.0F;
+    vertex_coordinate_[2] = 1.0F;
+    vertex_coordinate_[3] = -1.0F;
+    vertex_coordinate_[4] = -1.0F;
+    vertex_coordinate_[5] = 1.0F;
+    vertex_coordinate_[6] = 1.0F;
+    vertex_coordinate_[7] = 1.0F;
 
-    texture_coordinate_[0] = 0.0f;
-    texture_coordinate_[1] = 0.0f;
-    texture_coordinate_[2] = 1.0f;
-    texture_coordinate_[3] = 0.0f;
-    texture_coordinate_[4] = 0.0f;
-    texture_coordinate_[5] = 1.0f;
-    texture_coordinate_[6] = 1.0f;
-    texture_coordinate_[7] = 1.0f;
+    texture_coordinate_[0] = 0.0F;
+    texture_coordinate_[1] = 0.0F;
+    texture_coordinate_[2] = 1.0F;
+    texture_coordinate_[3] = 0.0F;
+    texture_coordinate_[4] = 0.0F;
+    texture_coordinate_[5] = 1.0F;
+    texture_coordinate_[6] = 1.0F;
+    texture_coordinate_[7] = 1.0F;
 }
 
 
 FrameBuffer::~FrameBuffer() {
     glDeleteTextures(1, &texture_id_);
     glDeleteFramebuffers(1, &frameBuffer_id_);
+    delete[] vertex_coordinate_;
+    delete[] texture_coordinate_;
 }
 
-void FrameBuffer::SetStartTime(uint64_t time) {
+void FrameBuffer::SetStartTime(int time) {
     start_time_ = time;
 }
 
-void FrameBuffer::SetEndTime(uint64_t time) {
+void FrameBuffer::SetEndTime(int time) {
     end_time_ = time;
 }
 
@@ -117,6 +124,18 @@ FrameBuffer::OnDrawFrame(GLuint texture_id, const GLfloat *vertex_coordinate, co
     if (current_time >= start_time_ && current_time <= end_time_) {
         glBindFramebuffer(GL_FRAMEBUFFER, frameBuffer_id_);
         ProcessImage(texture_id, vertex_coordinate, texture_coordinate);
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        return texture_id_;
+    }
+    return texture_id;
+}
+
+GLuint
+FrameBuffer::OnDrawFrame(GLuint texture_id, const GLfloat *vertex_coordinate, const GLfloat *texture_coordinate,
+        GLfloat* matrix, uint64_t current_time) {
+    if (current_time >= start_time_ && current_time <= end_time_) {
+        glBindFramebuffer(GL_FRAMEBUFFER, frameBuffer_id_);
+        ProcessImage(texture_id, vertex_coordinate, texture_coordinate, matrix);
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
         return texture_id_;
     }

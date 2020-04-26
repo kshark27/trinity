@@ -16,15 +16,19 @@
  *
  */
 
+@file:Suppress("DEPRECATION")
+
 package com.trinity.camera
 
 import android.content.Context
+import android.graphics.ImageFormat
 import android.graphics.PointF
 import android.graphics.Rect
 import android.graphics.SurfaceTexture
 import android.os.Handler
 import com.tencent.mars.xlog.Log
 import com.trinity.record.PreviewResolution
+import java.lang.Exception
 import kotlin.math.max
 import kotlin.math.min
 
@@ -55,6 +59,8 @@ class Camera1(
   private var mSurfaceTexture: SurfaceTexture ?= null
   private var mFocusEndRunnable: Runnable ?= null
   private var mResolution = PreviewResolution.RESOLUTION_1280x720
+  private var mZoom = 0
+  private var mExposureCompensation = 0
 
   companion object {
     private const val AUTOFOCUS_END_DELAY_MILLIS: Long = 2500
@@ -153,10 +159,10 @@ class Camera1(
     }
   }
 
-  private fun applyZoom(params: android.hardware.Camera.Parameters, zoom: Float) {
+  private fun applyZoom(params: android.hardware.Camera.Parameters, zoom: Int) {
     if (params.isZoomSupported) {
       val max = params.maxZoom
-      params.zoom = (zoom * max).toInt()
+      params.zoom = (zoom / 100f * max).toInt()
     }
   }
 
@@ -164,14 +170,10 @@ class Camera1(
     if (params.isAutoExposureLockSupported) {
       val max = params.maxExposureCompensation
       val min = params.minExposureCompensation
-      val value = if (exposureCorrection < min) {
-        min
+      val value = if (exposureCorrection <= 50) {
+        exposureCorrection / 50f * min
       } else {
-        if (exposureCorrection > max) {
-          max
-        } else {
-          exposureCorrection
-        }
+        (exposureCorrection - 50f) / 50f * max
       }
       params.exposureCompensation = value.toInt()
     }
@@ -246,12 +248,13 @@ class Camera1(
     params?.supportedPreviewSizes?.forEach {
       mPreviewSize.add(Size(it.width, it.height))
     }
+    params?.previewFormat = ImageFormat.NV21
     params?.let {
       applyFocusMode(it)
       applyFlash(it)
       applyWhiteBalance(it)
-      applyZoom(it, 0f)
-      applyExposureCorrection(it, 0)
+      applyZoom(it, mZoom)
+      applyExposureCorrection(it, mExposureCompensation)
     }
     val size = computePreviewStreamSize(resolution)
     Log.i("trinity", "setPreviewSize width: ${size.width} height: ${size.height}")
@@ -259,6 +262,11 @@ class Camera1(
     mCamera?.parameters = params
     mCameraParameters = params
     mCamera?.setDisplayOrientation(mAngles.offset(Reference.SENSOR, Reference.VIEW, Axis.ABSOLUTE))
+    val cameraInfo = android.hardware.Camera.CameraInfo()
+    android.hardware.Camera.getCameraInfo(mCameraId, cameraInfo)
+    mCamera?.setPreviewCallback { data, _ ->
+      mCameraCallback.dispatchOnPreviewCallback(data, size.width, size.height, cameraInfo.orientation)
+    }
     return 0
   }
 
@@ -286,6 +294,7 @@ class Camera1(
   }
 
   override fun stop() {
+    mCamera?.setPreviewCallback(null)
     mCamera?.stopPreview()
     mShowingPreview = false
     mCamera?.release()
@@ -325,6 +334,28 @@ class Camera1(
     return false
   }
 
+  override fun setZoom(zoom: Int) {
+    if (mCameraParameters == null) {
+      mZoom = zoom
+    } else {
+      mCameraParameters?.let {
+        applyZoom(it, zoom)
+        mCamera?.parameters = it
+      }
+    }
+  }
+
+  override fun setExposureCompensation(exposureCompensation: Int) {
+    if (mCameraParameters == null) {
+      mExposureCompensation = exposureCompensation
+    } else {
+      mCameraParameters?.let {
+        applyExposureCorrection(it, exposureCompensation)
+        mCamera?.parameters = it
+      }
+    }
+  }
+
   override fun setFlash(flash: Flash) {
     if (flash.ordinal == mFlash.ordinal) {
       return
@@ -356,6 +387,9 @@ class Camera1(
   }
 
   override fun focus(viewWidth: Int, viewHeight: Int, point: PointF) {
+    if (mFacing == Facing.FRONT) {
+      return
+    }
     mHandler.post {
       val p = PointF(point.x, point.y) // copy.
       val offset = mAngles.offset(Reference.SENSOR, Reference.VIEW, Axis.ABSOLUTE)
@@ -369,22 +403,28 @@ class Camera1(
         if (maxAF > 0) it.focusAreas = if (maxAF > 1) meteringAreas2 else meteringAreas1
         if (maxAE > 0) it.meteringAreas = if (maxAE > 1) meteringAreas2 else meteringAreas1
         it.focusMode = android.hardware.Camera.Parameters.FOCUS_MODE_AUTO
-        mCamera?.parameters = it
+        try {
+          mCamera?.parameters = it
+        } catch (e: Exception) {
+          e.printStackTrace()
+        }
       }
       mCameraCallback.dispatchOnFocusStart(p)
 
-      if (mFocusEndRunnable != null) {
-        mHandler.removeCallbacks(mFocusEndRunnable)
+      mFocusEndRunnable?.let {
+        mHandler.removeCallbacks(it)
       }
       mFocusEndRunnable = Runnable { mCameraCallback.dispatchOnFocusEnd(false, p) }
-      mHandler.postDelayed(mFocusEndRunnable, AUTOFOCUS_END_DELAY_MILLIS)
+      mFocusEndRunnable?.let {
+        mHandler.postDelayed(it, AUTOFOCUS_END_DELAY_MILLIS)
+      }
 
       try {
         mCamera?.autoFocus { success, _ ->
-          if (mFocusEndRunnable != null) {
-            mHandler.removeCallbacks(mFocusEndRunnable)
-            mFocusEndRunnable = null
+          mFocusEndRunnable?.let {
+            mHandler.removeCallbacks(it)
           }
+          mFocusEndRunnable = null
           mCameraCallback.dispatchOnFocusEnd(success, p)
           mHandler.removeCallbacks(mFocusResetRunnable)
           mHandler.postDelayed(mFocusResetRunnable, 3000)
